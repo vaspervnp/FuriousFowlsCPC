@@ -16,7 +16,8 @@ ui_compose:
         ld      hl,hud_buf          ; a black bar to sit the text on
         ld      de,hud_buf+1
         ld      bc,HUD_SIZE-1
-        ld      (hl),#11
+        ld      a,(mode0_pen_bytes+PEN_BLACK)
+        ld      (hl),a
         ldir
 
         ld      a,(game_state)
@@ -59,8 +60,7 @@ uc_birds:
         ld      a,(pigs_alive)
         ld      c,134
         ld      b,PEN_GREEN
-        call    ui_num1
-        jp      ui_bake
+        jp      ui_num1
 
 uc_clear:
         ld      hl,str_clear
@@ -70,8 +70,7 @@ uc_clear:
         ld      hl,str_next
         ld      c,72
         ld      b,PEN_WHITE
-        call    ui_text
-        jp      ui_bake
+        jp      ui_text
 uc_fail:
         ld      hl,str_fail
         ld      c,8
@@ -80,8 +79,7 @@ uc_fail:
         ld      hl,str_retry
         ld      c,80
         ld      b,PEN_WHITE
-        call    ui_text
-        jp      ui_bake
+        jp      ui_text
 
 ; ----------------------------------------------------------------------------
 ;  ui_text — HL = glyph string (#FE space, #FF end), C = x, B = pen
@@ -191,15 +189,16 @@ ug_skip:
         ret
 
 ; ----------------------------------------------------------------------------
-;  ui_px — plot (ug_x, ug_y) in pen B into hud_buf
+;  ui_px — plot (ug_x, ug_y) in pen B, straight into Mode 0.
+;
+;  The strip used to be composed in art form and converted afterwards,
+;  which cost a second 640-byte buffer. Plotting a Mode 0 pixel is only a
+;  mask and an OR, so the conversion — and the buffer — are gone.
 ; ----------------------------------------------------------------------------
 ui_px:
         ld      a,(ug_x)
         cp      VIEW_CHARS*4
         ret     nc
-        srl     a
-        ld      e,a
-        ld      d,0
         ld      a,(ug_y)            ; hud_buf + y * HUD_STRIDE + x / 2
         ld      l,a
         ld      h,0
@@ -219,50 +218,37 @@ ui_px:
         add     hl,de
         ld      de,hud_buf
         add     hl,de
+
+        ld      a,b                 ; the pen as a both-pixel Mode 0 byte
+        ld      de,mode0_pen_bytes
+        add     a,e
+        ld      e,a
+        adc     a,d
+        sub     e
+        ld      d,a
+        ld      a,(de)
+        ld      c,a
         ld      a,(ug_x)
         bit     0,a
-        ld      a,(hl)
-        jr      nz,up_low
-        and     #0F
+        jr      nz,up_right
+        ld      a,c                 ; left pixel: bits 7,3,5,1
+        and     #AA
         ld      c,a
-        ld      a,b
-        rlca
-        rlca
-        rlca
-        rlca
+        ld      a,(hl)
+        and     #55
         or      c
         ld      (hl),a
         ret
-up_low:
-        and     #F0
-        or      b
+up_right:
+        ld      a,c
+        and     #55
+        ld      c,a
+        ld      a,(hl)
+        and     #AA
+        or      c
         ld      (hl),a
         ret
         assert  HUD_STRIDE == 80
-
-; ----------------------------------------------------------------------------
-;  ui_bake — hud_buf (art) -> hud_m0 (Mode 0). Runs only when the strip's
-;  CONTENT changes, which is a handful of times a level.
-; ----------------------------------------------------------------------------
-ui_bake:
-        ld      hl,hud_buf
-        ld      de,hud_m0
-        ld      bc,HUD_SIZE
-ubk_loop:
-        push    bc
-        ld      a,(hl)
-        ld      c,a
-        ld      b,NP2DATA/256
-        ld      a,(bc)
-        ld      (de),a
-        pop     bc
-        inc     hl
-        inc     de
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,ubk_loop
-        ret
 
 ; ============================================================================
 ;  ui_blit — push hud_m0 into world char row 0 at the camera's column.
@@ -274,7 +260,7 @@ ubk_loop:
 ;  every frame the camera moves.
 ; ============================================================================
 ui_blit:
-        ld      hl,hud_m0
+        ld      hl,hud_buf
         ld      (ub_src),hl
         xor     a
         ld      (ub_y),a

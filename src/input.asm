@@ -13,6 +13,64 @@
 ;  register accesses halfway through.
 ; ============================================================================
 
+; ----------------------------------------------------------------------------
+;  psg_init — put the AY into a state where the keyboard can be READ.
+;
+;  Register 7 bit 6 is the direction of the PSG's port A, and port A is
+;  where the keyboard's column byte comes back. If the firmware left it as
+;  an OUTPUT — and we page the firmware out without ever telling the PSG
+;  otherwise — every read returns the same value, so keys appear stuck:
+;  hold SPACE and the sling winds up, let go and it never lets go, because
+;  as far as the game can tell you are still holding it.
+;
+;  #3F is also every tone and noise channel disabled, so nothing is left
+;  humming from whatever the loader was doing.
+; ----------------------------------------------------------------------------
+psg_init:
+        ld      hl,psg_boot
+        ld      b,4
+pi_loop:
+        push    bc
+        ld      d,(hl)
+        inc     hl
+        ld      e,(hl)
+        inc     hl
+        push    hl
+        call    psg_write
+        pop     hl
+        pop     bc
+        djnz    pi_loop
+        ret
+
+psg_boot:
+        db      7,#3F               ; both ports INPUT, all channels off
+        db      8,0                 ; ...and silent
+        db      9,0
+        db      10,0
+
+; ---- psg_write — D = register, E = value -----------------------------------
+psg_write:
+        di
+        ld      bc,PPI_CONTROL
+        ld      a,#82
+        out     (c),a               ; 8255: port A to output
+        ld      b,#F4
+        out     (c),d               ; the register number on the bus
+        ld      b,#F6
+        ld      a,#C0
+        out     (c),a               ; BDIR=1 BC1=1: latch it
+        xor     a
+        out     (c),a
+        ld      b,#F4
+        out     (c),e               ; the value on the bus
+        ld      b,#F6
+        ld      a,#80
+        out     (c),a               ; BDIR=1 BC1=0: write it
+        xor     a
+        out     (c),a
+        ei
+        ret
+
 kbd_scan:
         di
         ld      bc,PPI_CONTROL
@@ -41,9 +99,11 @@ kbd_row:
         ld      a,(hl)              ; last frame
         cpl
         and     d                   ; rising edges only
-        push    hl
-        ld      bc,KBD_ROWS         ; the edge array follows the state array
-        add     hl,bc
+        push    hl                  ; the edge array follows the state array.
+        push    de                  ; NOT via BC: C is the low half of the
+        ld      de,KBD_ROWS         ; port address every OUT below uses
+        add     hl,de
+        pop     de
         ld      (hl),a
         pop     hl
         ld      (hl),d

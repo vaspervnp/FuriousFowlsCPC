@@ -52,6 +52,7 @@ entry_point:
         out     (c),a
 
         call    crtc_init
+        call    psg_init            ; ...or the keyboard reads as stuck
         call    palette_black
 
         ld      hl,CREATURE_STAGE   ; rescue the art from video RAM before

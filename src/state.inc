@@ -19,18 +19,19 @@ bg_template     equ colbuf+COLBUF_SIZE      ; sky + turf, identical for every
                                             ; flat: built once, copied per
                                             ; column instead of recomputed
 
-hud_buf         equ bg_template+COLBUF_SIZE ; the status strip, composed in
-HUD_STRIDE      equ VIEW_CHARS*2            ; ART form (plotting glyphs is
-HUD_SIZE        equ HUD_STRIDE*HUD_LINES    ; nibble work)...
+hud_buf         equ bg_template+COLBUF_SIZE ; the status strip, composed
+HUD_STRIDE      equ VIEW_CHARS*2            ; straight in MODE 0 so it can be
+HUD_SIZE        equ HUD_STRIDE*HUD_LINES    ; LDIR'd into the ring as-is
 
-hud_m0          equ hud_buf+HUD_SIZE        ; ...and then converted ONCE into
-                                            ; Mode 0, because the strip is
-                                            ; re-blitted on every scrolled
-                                            ; frame and a per-byte lookup
-                                            ; there costs a third of a frame
+;  What is under the bird. Rebuilding the scene beneath a 16x32 sprite is
+;  five columns of background every time it moves, which does not fit in a
+;  frame alongside the blit — so the pixels it covers are kept and put back
+;  instead. See shot.asm.
+shot_back       equ hud_buf+HUD_SIZE
+SHOT_BACK_SIZE  equ 9*CR_HEIGHT
 
 ; --- the level, unpacked ----------------------------------------------------
-scen_count      equ hud_m0+HUD_SIZE
+scen_count      equ shot_back+SHOT_BACK_SIZE
 scen_tab        equ scen_count+1            ; 3 bytes: cell, char col, y
 SCEN_ENT        equ 3
 
