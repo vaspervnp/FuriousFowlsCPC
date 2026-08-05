@@ -45,6 +45,27 @@ game_start_level:
         jp      palette_apply
 
 ; ----------------------------------------------------------------------------
+;  world_repaint — rebuild the whole visible window from the model.
+;
+;  Every sprite in this engine is erased by rebuilding the background under
+;  it, and any erase that misses leaves its sprite behind for good. Doing
+;  one clean sweep at each turn boundary means nothing can accumulate
+;  across a whole level: whatever the screen shows at the start of a turn
+;  is what the block and pig tables actually say. It costs about a second,
+;  in a pause that already exists.
+;
+;  It is also the experiment that tells the two failure modes apart. If an
+;  artefact survives this, the MODEL is wrong; if it vanishes, the DRAWING
+;  was.
+; ----------------------------------------------------------------------------
+world_repaint:
+        call    repaint_window
+        call    blocks_draw_all
+        call    pigs_draw_all
+        call    ui_compose
+        jp      ui_blit
+
+; ----------------------------------------------------------------------------
 ;  game_next_bird — put the next one in the queue on the sling, or give up
 ; ----------------------------------------------------------------------------
 game_next_bird:
@@ -255,6 +276,9 @@ gs_busy:
         ret
 
 gs_turn_over:
+        xor     a                   ; the bird is spent: take it off the
+        ld      (sh_drawn),a        ; screen before the repaint, or the
+        call    world_repaint       ; repaint will not know to remove it
         ld      a,(pigs_alive)
         or      a
         jr      z,gs_cleared
