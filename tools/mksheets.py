@@ -315,28 +315,52 @@ def draw_block(piece, pens, thin=False):
     # Uprights are drawn NARROW: a pillar that fills its cell reads as a
     # wall, and the whole point of one is that it is the thing you knock
     # over. These are the half-widths either side of the cell's middle.
-    vw = 2 if thin else 4          # beam_v
-    pw = 1 if thin else 3          # pillar shaft
-    hy = 4 if thin else 7          # half-height of a horizontal plank
+    vw = 3 if thin else 4          # beam_v
+    pw = 2 if thin else 3          # pillar shaft
+    hy = 3 if thin else 7          # half-height of a horizontal plank
+
+    def grain_h(x0, y0, x1, y1):
+        """Length-wise grain and darker cut ends — the two things that make
+        a shape read as a piece of timber rather than a painted column."""
+        for y in range(y0 + 1, y1, 2):
+            for x in range(x0 + 2, x1 - 1, 3):
+                put(c, x, y, dark)
+        rect(c, x0, y0, x0, y1, dark)
+        rect(c, x1, y0, x1, y1, dark)
+
+    def grain_v(x0, y0, x1, y1):
+        for x in range(x0 + 1, x1, 2):
+            for y in range(y0 + 2, y1 - 1, 3):
+                put(c, x, y, dark)
+        rect(c, x0, y0, x1, y0, dark)
+        rect(c, x0, y1, x1, y1, dark)
 
     if piece == 'beam_h':
         rect(c, 0, 8 - hy, w - 1, 7 + hy, face)
-        bevel(0, 8 - hy, w - 1, 7 + hy)
-        for y in (8 - hy + 2, 5 + hy):
-            for x in range(2, w - 2, 3):
-                put(c, x, y, detail)
+        if thin:
+            grain_h(0, 8 - hy, w - 1, 7 + hy)
+        else:
+            bevel(0, 8 - hy, w - 1, 7 + hy)
+            for y in (8 - hy + 2, 5 + hy):
+                for x in range(2, w - 2, 3):
+                    put(c, x, y, detail)
     elif piece == 'beam_v':
         rect(c, 8 - vw, 0, 7 + vw, h - 1, face)
-        bevel(8 - vw, 0, 7 + vw, h - 1)
-        if not thin:
+        if thin:
+            grain_v(8 - vw, 0, 7 + vw, h - 1)
+        else:
+            bevel(8 - vw, 0, 7 + vw, h - 1)
             for x in (5, 10):
                 for y in range(1, h - 1, 3):
                     put(c, x, y, detail)
     elif piece == 'cube':
         m = 3 if thin else 0
         rect(c, m, m, w - 1 - m, h - 1 - m, face)
-        bevel(m, m, w - 1 - m, h - 1 - m)
-        rect(c, m + 3, m + 3, w - 4 - m, m + 3, detail)
+        if thin:
+            grain_h(m, m, w - 1 - m, h - 1 - m)      # a sawn offcut
+        else:
+            bevel(m, m, w - 1 - m, h - 1 - m)
+            rect(c, m + 3, m + 3, w - 4 - m, m + 3, detail)
     elif piece == 'brick':
         m = 3 if thin else 0
         rect(c, m, m, w - 1 - m, h - 1 - m, face)
@@ -367,6 +391,11 @@ def draw_block(piece, pens, thin=False):
         ellipse(c, 7.5, h, 4 if not thin else 6, 7 if not thin else 9, T)
         rect(c, 0, 4, 0, h - 1, light)
         rect(c, w - 1, 4, w - 1, h - 1, dark)
+    elif piece == 'pillar' and thin:
+        rect(c, 8 - pw, 0, 7 + pw, h - 1, face)      # a bare stick
+        grain_v(8 - pw, 0, 7 + pw, h - 1)
+        put(c, 8 - pw, 5, face)                      # a knot or two
+        put(c, 7 + pw, 11, face)
     elif piece == 'pillar':
         rect(c, 8 - pw, 0, 7 + pw, h - 1, face)
         cap = 2 if thin else 4
@@ -378,8 +407,10 @@ def draw_block(piece, pens, thin=False):
     elif piece == 'slab':
         t = 2 if thin else 3
         rect(c, 0, 8 - t, w - 1, 7 + t, face)
-        bevel(0, 8 - t, w - 1, 7 + t)
-        if not thin:
+        if thin:
+            grain_h(0, 8 - t, w - 1, 7 + t)
+        else:
+            bevel(0, 8 - t, w - 1, 7 + t)
             rect(c, 3, 7, w - 4, 7, detail)
     elif piece == 'crate':
         m = 2 if thin else 0
@@ -485,6 +516,22 @@ def slingshot(front):
     return c
 
 
+def boulder_round():                         # 64x64
+    """Weathered and rounded, to sit beside the jagged one — a skyline of
+    nothing but sharp peaks reads as scenery from a different game."""
+    c = cell(64, 64)
+    ellipse(c, 30, 46, 30, 22, STONE)
+    ellipse(c, 14, 50, 14, 13, STONE)
+    ellipse(c, 50, 49, 15, 14, STONE)
+    rect(c, 0, 56, 63, 63, STONE)
+    ellipse(c, 26, 34, 14, 7, STONE2)        # the sunlit crown
+    ellipse(c, 50, 41, 8, 4, STONE2)
+    for x, y, r in ((18, 52, 3), (40, 55, 4), (56, 52, 2)):
+        ellipse(c, x, y, r, r * 0.6, SHADE)  # hollows worn into the face
+    rect(c, 0, 63, 63, 63, BLACK)
+    return c
+
+
 def boulder():                               # 64x64
     c = cell(64, 64)
     rect(c, 2, 50, 61, 63, STONE)
@@ -524,6 +571,7 @@ def build_scenery():
              + slice_object(bush(True)) + slice_object(bush(False))
              + slice_object(cloud(True)) + slice_object(cloud(False))
              + slice_object(boulder())
+             + slice_object(boulder_round())
              + [slingshot(False), slingshot(True)])
     if len(cells) != len(SCENERY_CELLS):
         raise SystemExit('scenery: built %d cells, sheetdefs wants %d'

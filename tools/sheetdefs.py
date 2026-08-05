@@ -113,8 +113,9 @@ SCENERY_CELLS = [
     'bush_a', 'bush_b',              # 4,5   two shrubs
     'cloud_a_l', 'cloud_a_r',        # 6,7   fat cumulus
     'cloud_b_l', 'cloud_b_r',        # 8,9   thin streak
-    'rock_l', 'rock_r',              # 10,11 boulder
-    'sling_back', 'sling_front',     # 12,13 the slingshot, in two passes
+    'rock_l', 'rock_r',              # 10,11 a jagged boulder
+    'boul_l', 'boul_r',              # 12,13 ...and a rounded, weathered one
+    'sling_back', 'sling_front',     # 14,15 the slingshot, in two passes
 ]
 SCENERY_W, SCENERY_H = 32, 64
 SCENERY_COUNT = len(SCENERY_CELLS)

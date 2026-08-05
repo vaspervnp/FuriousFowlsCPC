@@ -196,7 +196,7 @@ def default_level(n):
         scenery.append(('tree_a' if n % 2 else 'tree_b', 248, GROUND_Y - 128))
     scenery.append(('bush_a' if n % 3 else 'bush_b', 88, GROUND_Y - 64))
     if n % 4 == 0:
-        scenery.append(('rock', 140, GROUND_Y - 64))
+        scenery.append(('rock' if n % 8 else 'boulder', 140, GROUND_Y - 64))
 
     return dict(name='FORT %02d' % n, set=mset, sling=24, birds=birds,
                 scenery=scenery, blocks=blocks, pigs=pigs)
@@ -359,6 +359,7 @@ SCENERY_OBJECTS = {
     'cloud_a':  [('cloud_a_l', 0, 0), ('cloud_a_r', 32, 0)],
     'cloud_b':  [('cloud_b_l', 0, 0), ('cloud_b_r', 32, 0)],
     'rock':     [('rock_l', 0, 0), ('rock_r', 32, 0)],
+    'boulder':  [('boul_l', 0, 0), ('boul_r', 32, 0)],
     'sling':    [('sling_back', 0, 0)],
 }
 
