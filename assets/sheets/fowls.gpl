@@ -1,0 +1,20 @@
+GIMP Palette
+Name: Furious Fowls
+Columns: 4
+#
+255   0 255	0 transparent
+  0   0   0	1 black
+255 255 255	2 white
+255   0   0	3 red
+255 128   0	4 orange
+255 255   0	5 yellow
+  0 255   0	6 green
+  0 128   0	7 dgreen
+  0 255 255	8 cyan
+  0   0 255	9 blue
+128 128 128	10 grey
+128   0   0	11 brown
+255 128 192	12 pink
+255 255 128	13 sand
+128 128 255	14 paleblue
+128   0 128	15 purple

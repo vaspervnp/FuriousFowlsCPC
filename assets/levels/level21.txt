@@ -1,0 +1,12 @@
+# FORT 21 — edit freely, then run make.
+# grid is 20x10 cells of 16 px; the last map line sits on the ground.
+name    FORT 21
+set     ice
+sling   24
+birds   red yellow blue black white
+scenery cloud_a 16 10 ; cloud_b 188 26 ; tree_a 248 40 ; bush_b 88 104
+map
+...............b....
+..............bb....
+.............bbb...c
+.Y........p.cccc.p.c
