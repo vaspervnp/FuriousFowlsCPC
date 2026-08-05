@@ -117,12 +117,18 @@ rr_ncol         equ rr_col0+1
 rr_y0           equ rr_col0+2
 rr_n            equ rr_col0+3
 
+;  The impact spread's working set: which pieces the blow has reached and
+;  how many hops out, plus the queue the walk runs on.
+spread_lvl      equ rr_col0+8       ; per block: hops+1, 0 = not reached
+spread_q        equ spread_lvl+MAX_BLOCKS
+spread_pig      equ spread_q+MAX_BLOCKS
+
 ui_dirty        equ rr_col0+4   ; 1 = the status strip needs recomposing;
                                 ; done in the main loop, not wherever the
                                 ; count changed, because ui_blit is 13k
                                 ; T-states and pigs die inside the sweep
 
-st_scratch      equ rr_col0+8
+st_scratch      equ spread_pig+MAX_PIGS
 STATE_END       equ st_scratch+32
 
         assert  STATE_END < SCREEN_BASE

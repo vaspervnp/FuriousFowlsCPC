@@ -211,10 +211,24 @@ to the ten pieces of whichever material set the level uses. A kilobyte of
 tables buys tilted art for every piece; storing four pre-tilted copies of
 all fifty block sprites would be 25 KB, and there is no 25 KB.
 
-A bird that lands on a fort and keeps sliding SHOVES it: the direction is
-recorded on the piece it hit, and decides which way that piece goes over
-when it loses its footing. A piece held only by its neighbours does not
-survive being dragged sideways at all.
+**Nothing is ever removed.** Damage in this engine means DISPLACEMENT: a
+piece that takes more force than it can resist is *dislodged* — shoved a
+cell the way the blow was travelling if there is room, then let go, so it
+falls and brings down whatever it was holding up. `BLK_HP` is read as
+resistance, not as a pool that drains, so a stone cube shrugs off what
+throws a crate across the map. A fort ends the shot as a heap on the
+ground rather than as a series of pieces that blinked out of existence.
+
+**The blow spreads.** It does not stop at the piece the bird lands on: it
+runs through everything in contact with it, losing a fifth of the original
+at every hop. The piece hit takes all of it, everything touching it four
+fifths, the ring beyond three fifths, and the fifth ring nothing — which
+is what makes the walk terminate on its own, with no depth limit to tune
+and no way for a loop in the contact graph to run away. The *direction*
+travels with the force, so a fort hit from the left leans right all the
+way through. Discovery runs first and damage second, because dislodging a
+piece moves it in the grid and a walk that mutated the grid underneath
+itself would lose its way.
 
 **Forts collapse cellularly, not physically.** Rigid-body physics is not
 happening on a 4 MHz Z80, and it is not what makes the genre work anyway —

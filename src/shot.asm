@@ -363,24 +363,21 @@ sc_grid:
         call    mul8
         ld      (sc_dmg),a
 
+        ld      hl,(sh_vx)          ; which way the blow was travelling —
+        ld      a,h                 ; the vector goes into the fort with the
+        or      l                   ; force, not just the force
+        ld      c,1
+        jr      z,sc_dir_done
+        bit     7,h
+        jr      z,sc_dir_done
+        ld      c,#FF
+sc_dir_done:
         ld      a,(sc_cell)
         bit     7,a
         jr      nz,sc_hit_pig
-        ld      e,a
-        call    block_ptr
+        ld      (is_seed),a
         ld      a,(sc_dmg)
-        call    block_hit
-        ld      hl,(sh_vx)          ; a bird that hits and keeps going drags
-        ld      a,h                 ; the fort the way it is travelling
-        or      l
-        jr      z,sc_bounce
-        ld      a,h
-        rla
-        ld      a,1
-        jr      nc,sc_shove_go
-        ld      a,#FF
-sc_shove_go:
-        call    block_shove
+        call    impact_spread       ; C = direction, A = force at the hit
         jr      sc_bounce
 sc_hit_pig:
         and     #7F
