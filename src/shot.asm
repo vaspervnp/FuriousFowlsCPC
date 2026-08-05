@@ -119,6 +119,61 @@ sdr_redraw:
         jp      shot_draw
 
 ; ----------------------------------------------------------------------------
+;  shot_draw_rect — the bird is furniture too, as far as an erase is
+;  concerned. Anything that repaints the background where it is standing
+;  has to put it back: the scroll seam rebuilds a whole column every time
+;  the camera moves, so without this, panning away from the sling and back
+;  leaves an empty fork.
+;
+;  (sdr_skip) is raised while the bird is erasing ITSELF, or the erase
+;  would helpfully paint it straight back.
+; ----------------------------------------------------------------------------
+shot_draw_rect:
+        ld      a,(sh_drawn)
+        or      a
+        ret     z
+        ld      a,(sdr_skip)
+        or      a
+        ret     nz
+        ld      hl,(sh_px)
+        bit     7,h
+        ret     nz
+        ld      a,h
+        or      a
+        ret     nz
+        srl     h                   ; its leftmost char column
+        rr      l
+        srl     h
+        rr      l
+        ld      c,l
+        ld      a,(rr_col0)
+        ld      b,a
+        ld      a,(rr_ncol)
+        add     a,b
+        dec     a
+        cp      c
+        ret     c                   ; the bird starts right of the window
+        ld      a,c
+        add     a,4
+        cp      b
+        ret     c                   ; ...or ends left of it
+        ld      a,(sh_py)
+        ld      c,a
+        ld      a,(rr_y0)
+        ld      b,a
+        ld      a,(rr_n)
+        add     a,b
+        dec     a
+        cp      c
+        ret     c
+        ld      a,c
+        add     a,CR_HEIGHT-1
+        cp      b
+        ret     c
+        call    sling_band          ; and its elastic, if it is on the sling
+        jp      shot_draw
+
+; ----------------------------------------------------------------------------
 ;  sling_band — two lines from the fork tips to the pouch.
 ;
 ;  There is no sprite for this: the elastic changes shape every time the
@@ -552,6 +607,8 @@ shot_erase:
         ret     z
         xor     a
         ld      (sh_drawn),a
+        inc     a
+        ld      (sdr_skip),a        ; do not paint it back inside its own erase
         ld      a,(game_state)
         cp      GS_AIM
         jr      z,se_aim            ; on the sling: the elastic has to go too
@@ -577,13 +634,19 @@ se_yok:
         ld      (rr_y0),a
         ld      a,CR_HEIGHT
         ld      (rr_n),a
-        jp      redraw_rect
+        call    redraw_rect
+        jr      se_done
 
 ;  The aim rectangle is the bird's box UNION the elastic's, worked out each
 ;  time rather than fixed. That matters more than it looks: a whole game
 ;  frame of aiming costs about one display frame, so a rectangle twice the
 ;  size it needs to be does not merely cost time, it puts the erase and the
 ;  redraw in DIFFERENT displayed frames and the bird visibly blinks.
+se_done:
+        xor     a
+        ld      (sdr_skip),a
+        ret
+
 se_aim:
         ld      a,(sling_x)         ; left edge: the far grip or the bird
         sub     SLING_TIP_DL
@@ -633,7 +696,8 @@ se_y1:
         ld      a,c
         sub     b
         ld      (rr_n),a
-        jp      redraw_rect
+        call    redraw_rect
+        jr      se_done
 
 ; ============================================================================
 ;  Signed helpers
@@ -734,6 +798,7 @@ cos256:
 ; ----------------------------------------------------------------------------
 su_steps:       db      0
 sa_pull:        db      0
+sdr_skip:       db      0
 sa_frame:       db      0
 sa_x:           dw      0
 sa_y:           dw      0

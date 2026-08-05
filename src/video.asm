@@ -288,11 +288,13 @@ draw_col_range:
                                     ; set up afterwards, not before.
         ld      a,(dcr_y)
         ld      c,a                 ; C = the scanline we are on
-        add     a,a
-        ld      e,a
-        ld      d,0
-        ld      iy,colbuf
-        add     iy,de               ; IY = colbuf + y*2
+        ld      l,a                 ; IY = colbuf + y*2, in SIXTEEN bits:
+        ld      h,0                 ; colbuf is 400 bytes, so any erase
+        add     hl,hl               ; starting below line 127 overflows an
+        ld      de,colbuf           ; 8-bit doubling and reads the wrong row
+        add     hl,de               ; — which is sky, over the turf
+        push    hl
+        pop     iy
         ld      a,(dcr_n)
         ld      b,a                 ; B = lines to go
 dcr_loop:

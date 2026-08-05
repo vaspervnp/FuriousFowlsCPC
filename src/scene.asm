@@ -261,6 +261,26 @@ redraw_rect:
         ld      a,(rr_n)
         or      a
         ret     z
+;  CLAMP TO THE PLAY AREA. A piece part way through a cell can sit at line
+;  182, and a tilted beam's box is forty lines tall — which asks for lines
+;  past the bottom of the world. That is not merely wasted work: colbuf is
+;  exactly two hundred lines long and bg_template is the very next thing in
+;  memory, so an over-long window runs the copy straight off the end of one
+;  into the other, and then pushes the sky it finds there out to the ring.
+        ld      c,a
+        ld      a,(rr_y0)
+        cp      SCREEN_LINES
+        ret     nc                  ; starts below the world entirely
+        add     a,c
+        jr      c,rr_clamp
+        cp      SCREEN_LINES+1
+        jr      c,rr_span_ok
+rr_clamp:
+        ld      a,SCREEN_LINES
+        ld      hl,rr_y0
+        sub     (hl)
+        ld      (rr_n),a
+rr_span_ok:
         ld      a,(rr_ncol)
         or      a
         ret     z
@@ -309,4 +329,5 @@ rr_column:
 ; ----------------------------------------------------------------------------
 rr_restack:
         call    blocks_draw_rect
-        jp      pigs_draw_rect
+        call    pigs_draw_rect
+        jp      shot_draw_rect
