@@ -299,7 +299,9 @@ def draw_pig(body, belly, snout, gear, frame):
 # ---------------------------------------------------------------------------
 #  BLOCKS — ten shapes, painted in each material set's four pens.
 # ---------------------------------------------------------------------------
-def draw_block(piece, pens):
+def draw_block(piece, pens, thin=False):
+    """`thin` draws the whole set as light timber: everything narrower, and
+    the uprights genuinely slender rather than a cell painted in."""
     face, light, dark, detail = pens
     w, h = BLOCK_W, BLOCK_H
     c = cell(w, h)
@@ -310,66 +312,84 @@ def draw_block(piece, pens):
         rect(c, x0, y1, x1, y1, dark)
         rect(c, x1, y0, x1, y1, dark)
 
+    # Uprights are drawn NARROW: a pillar that fills its cell reads as a
+    # wall, and the whole point of one is that it is the thing you knock
+    # over. These are the half-widths either side of the cell's middle.
+    vw = 2 if thin else 4          # beam_v
+    pw = 1 if thin else 3          # pillar shaft
+    hy = 4 if thin else 7          # half-height of a horizontal plank
+
     if piece == 'beam_h':
-        rect(c, 0, 1, w - 1, h - 2, face)
-        bevel(0, 1, w - 1, h - 2)
-        for y in (5, 10):
+        rect(c, 0, 8 - hy, w - 1, 7 + hy, face)
+        bevel(0, 8 - hy, w - 1, 7 + hy)
+        for y in (8 - hy + 2, 5 + hy):
             for x in range(2, w - 2, 3):
                 put(c, x, y, detail)
     elif piece == 'beam_v':
-        rect(c, 2, 0, w - 3, h - 1, face)
-        bevel(2, 0, w - 3, h - 1)
-        for x in (5, 10):
-            for y in range(1, h - 1, 3):
-                put(c, x, y, detail)
+        rect(c, 8 - vw, 0, 7 + vw, h - 1, face)
+        bevel(8 - vw, 0, 7 + vw, h - 1)
+        if not thin:
+            for x in (5, 10):
+                for y in range(1, h - 1, 3):
+                    put(c, x, y, detail)
     elif piece == 'cube':
-        rect(c, 0, 0, w - 1, h - 1, face)
-        bevel(0, 0, w - 1, h - 1)
-        rect(c, 3, 3, w - 4, 3, detail)
-        rect(c, 3, h - 4, w - 4, h - 4, detail)
+        m = 3 if thin else 0
+        rect(c, m, m, w - 1 - m, h - 1 - m, face)
+        bevel(m, m, w - 1 - m, h - 1 - m)
+        rect(c, m + 3, m + 3, w - 4 - m, m + 3, detail)
     elif piece == 'brick':
-        rect(c, 0, 0, w - 1, h - 1, face)
-        for y in (0, 5, 10, 15):
-            rect(c, 0, y, w - 1, y, dark)
-        for i, y in enumerate((2, 7, 12)):
-            off = 0 if i % 2 else 8
-            for x in range(off, w, 8):
+        m = 3 if thin else 0
+        rect(c, m, m, w - 1 - m, h - 1 - m, face)
+        for y in range(m, h - m, 5):
+            rect(c, m, y, w - 1 - m, y, dark)
+        for i, y in enumerate(range(m + 2, h - m - 1, 5)):
+            off = m if i % 2 else m + 4
+            for x in range(off, w - m, 8):
                 rect(c, x, y - 2, x, y + 2, dark)
-        bevel(0, 0, w - 1, h - 1)
+        bevel(m, m, w - 1 - m, h - 1 - m)
     elif piece in ('roof_l', 'roof_r'):
         if piece == 'roof_l':
             triangle(c, [(0, h - 1), (w - 1, 0), (w - 1, h - 1)], face)
+            if thin:                       # a rafter, not a solid wedge
+                triangle(c, [(4, h - 1), (w - 1, 4), (w - 1, h - 1)], T)
             for i in range(0, h, 3):
                 put(c, w - 1 - i, i, light)
         else:
             triangle(c, [(0, 0), (w - 1, h - 1), (0, h - 1)], face)
+            if thin:
+                triangle(c, [(0, 4), (w - 5, h - 1), (0, h - 1)], T)
             for i in range(0, h, 3):
                 put(c, i, i, light)
         rect(c, 0, h - 1, w - 1, h - 1, dark)
     elif piece == 'arch':
         rect(c, 0, 4, w - 1, h - 1, face)
         ellipse(c, 7.5, 4, 8, 4, face)
-        ellipse(c, 7.5, h, 4, 7, T)           # the doorway underneath
+        ellipse(c, 7.5, h, 4 if not thin else 6, 7 if not thin else 9, T)
         rect(c, 0, 4, 0, h - 1, light)
         rect(c, w - 1, 4, w - 1, h - 1, dark)
     elif piece == 'pillar':
-        rect(c, 4, 0, 11, h - 1, face)
-        rect(c, 1, 0, w - 2, 2, face)         # capital
-        rect(c, 1, h - 3, w - 2, h - 1, face)  # base
-        bevel(4, 0, 11, h - 1)
-        rect(c, 1, 0, w - 2, 0, light)
-        rect(c, 1, h - 1, w - 2, h - 1, dark)
+        rect(c, 8 - pw, 0, 7 + pw, h - 1, face)
+        cap = 2 if thin else 4
+        rect(c, 8 - pw - cap, 0, 7 + pw + cap, 1, face)         # capital
+        rect(c, 8 - pw - cap, h - 2, 7 + pw + cap, h - 1, face)  # base
+        bevel(8 - pw, 0, 7 + pw, h - 1)
+        rect(c, 8 - pw - cap, 0, 7 + pw + cap, 0, light)
+        rect(c, 8 - pw - cap, h - 1, 7 + pw + cap, h - 1, dark)
     elif piece == 'slab':
-        rect(c, 0, 5, w - 1, 10, face)
-        bevel(0, 5, w - 1, 10)
-        rect(c, 3, 7, w - 4, 7, detail)
+        t = 2 if thin else 3
+        rect(c, 0, 8 - t, w - 1, 7 + t, face)
+        bevel(0, 8 - t, w - 1, 7 + t)
+        if not thin:
+            rect(c, 3, 7, w - 4, 7, detail)
     elif piece == 'crate':
-        rect(c, 0, 0, w - 1, h - 1, face)
-        rect(c, 2, 2, w - 3, h - 3, T)        # hollow
-        for i in range(h):
-            put(c, 1 + i * (w - 3) // (h - 1), i, dark)
-            put(c, w - 2 - i * (w - 3) // (h - 1), i, dark)
-        bevel(0, 0, w - 1, h - 1)
+        m = 2 if thin else 0
+        rect(c, m, m, w - 1 - m, h - 1 - m, face)
+        rect(c, m + 2, m + 2, w - 3 - m, h - 3 - m, T)
+        span = h - 1 - 2 * m
+        for i in range(span + 1):
+            put(c, m + 1 + i * (w - 3 - 2 * m) // max(span, 1), m + i, dark)
+            put(c, w - 2 - m - i * (w - 3 - 2 * m) // max(span, 1), m + i, dark)
+        bevel(m, m, w - 1 - m, h - 1 - m)
     return c
 
 
@@ -493,9 +513,9 @@ def build_creatures():
 
 def build_blocks():
     cells = []
-    for _set, _tough, pens in BLOCK_SETS:
-        for piece, _hp in BLOCK_PIECES:
-            cells.append(draw_block(piece, pens))
+    for _set, _tough, pens, thin in BLOCK_SETS:
+        for piece, _hp, _tall in BLOCK_PIECES:
+            cells.append(draw_block(piece, pens, thin))
     return cells
 
 

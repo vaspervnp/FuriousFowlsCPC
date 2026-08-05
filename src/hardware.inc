@@ -15,8 +15,8 @@
 ;    #3900-#3F7F  spare
 ;    #3F80-#3FFF  stack (grows down from #4000)
 ;    #4000-#7FFF  code, scenery RLE, level records, tables
-;    #8000-#98FF  block art, 50 pieces x 128 B               (6400)
-;    #9900-#BFFF  game state
+;    #8000-#9DFF  block art, 60 pieces x 128 B               (7680)
+;    #9E00-#BFFF  game state
 ;    #C000-#FFFF  video RAM
 ;
 ;  The art is too big to live in one loadable image below #C000, so the
@@ -46,7 +46,7 @@ CREATURE_ART            equ #0400
 CREATURE_STAGE          equ #C000   ; where the loader parks it
 
 BLOCK_ART               equ #8000
-STATE_BASE              equ #9900
+STATE_BASE              equ #9E00
 
 ; ---------------------------------------------------------------------------
 ;  Playfield. The world is 320 px (80 CRTC chars) and the window shows

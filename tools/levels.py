@@ -50,7 +50,7 @@ TOP_Y = GROUND_Y - GRID_H * CELL        # y of grid row 0 == 8
 WORLD_PX = GRID_W * CELL        # 320
 MAX_BIRDS = 6
 MAX_PIGS = 8
-MAX_BLOCKS = 60
+MAX_BLOCKS = 48        # six sets of block art pushed the state block up
 MAX_SCENERY = 12       # 10 for the level, 2 reserved for the slingshot
 MAX_LEVEL_SCENERY = 10
 

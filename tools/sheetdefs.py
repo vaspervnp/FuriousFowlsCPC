@@ -62,29 +62,34 @@ PIG_COUNT = len(PIGS)
 #  hardware.inc, and the per-piece hit points below are what the physics
 #  engine uses (scaled by the set's toughness).
 # ---------------------------------------------------------------------------
+#  `tall` marks the UPRIGHTS. A piece standing on end does not just get
+#  dislodged when something shoves it — it goes over, which is why they
+#  have to be told apart from the things that merely sit there.
 BLOCK_PIECES = [
-    # name        hp   what it is
-    ('beam_h',    30),  # 0  horizontal plank, the standard floor/lintel
-    ('beam_v',    30),  # 1  vertical plank, the standard upright
-    ('cube',      45),  # 2  solid square, load bearing
-    ('brick',     40),  # 3  coursed brick, a heavier cube
-    ('roof_l',    25),  # 4  wedge rising to the right
-    ('roof_r',    25),  # 5  wedge rising to the left
-    ('arch',      35),  # 6  rounded top, doorways and windows
-    ('pillar',    28),  # 7  slender column with a cap and a base
-    ('slab',      20),  # 8  thin shelf, snaps easily
-    ('crate',     18),  # 9  hollow box — the weak point of any fort
+    # name        hp   tall   what it is
+    ('beam_h',    30,  False),  # 0  horizontal plank, floor and lintel
+    ('beam_v',    30,  True),   # 1  vertical plank, the standard upright
+    ('cube',      45,  False),  # 2  solid square, load bearing
+    ('brick',     40,  False),  # 3  coursed brick, a heavier cube
+    ('roof_l',    25,  False),  # 4  wedge rising to the right
+    ('roof_r',    25,  False),  # 5  wedge rising to the left
+    ('arch',      35,  False),  # 6  rounded top, doorways and windows
+    ('pillar',    28,  True),   # 7  slender column with a cap and a base
+    ('slab',      20,  False),  # 8  thin shelf, snaps easily
+    ('crate',     18,  False),  # 9  hollow box — the weak point of a fort
 ]
 
-# set name, toughness (percent of the base hp), and the pens the drawing
-# code paints with: (face, light edge, dark edge, detail)
+# set name, toughness (percent of the base hp), the pens the drawing code
+# paints with — (face, light edge, dark edge, detail) — and whether the
+# whole set is drawn THIN.
 BLOCK_SETS = [
-    ('wood',   100, (4, 13, 11, 11)),
-    ('stone',  170, (10, 2, 1, 1)),
-    ('ice',     60, (8, 2, 14, 14)),
-    ('sand',    85, (13, 2, 4, 4)),
-    ('metal',  220, (14, 2, 9, 9)),
-]
+    ('wood',   100, (4, 13, 11, 11), False),
+    ('stone',  170, (10, 2, 1, 1),   False),
+    ('ice',     60, (8, 2, 14, 14),  False),
+    ('sand',    85, (13, 2, 4, 4),   False),
+    ('metal',  220, (14, 2, 9, 9),   False),
+    ('twig',    50, (4, 13, 11, 11), True),   # thin wood: light, and it
+]                                             # goes over if you look at it
 
 BLOCK_W, BLOCK_H = 16, 16
 BLOCK_COUNT = len(BLOCK_SETS) * len(BLOCK_PIECES)

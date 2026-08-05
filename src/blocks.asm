@@ -679,6 +679,8 @@ SPREAD_PASSES   equ 5
 
 impact_spread:
         ld      (is_base),a
+        ld      a,c                 ; the direction goes somewhere safe FIRST:
+        ld      (is_dir),a          ; the LDIR below needs BC
         ld      hl,spread_force     ; nothing has been reached yet
         ld      de,spread_force+1
         ld      bc,MAX_BLOCKS*2+MAX_PIGS-1
@@ -699,7 +701,7 @@ impact_spread:
         ld      (hl),a
         ld      hl,spread_dir
         add     hl,de
-        ld      a,c
+        ld      a,(is_dir)
         ld      (hl),a
 
         ld      a,SPREAD_PASSES
@@ -751,8 +753,20 @@ is_o_right:
         ld      a,1
         call    is_relax
 
-        ld      a,(is_cur)          ; and straight up and down its whole
-        ld      e,a                 ; span, which carries no sideways bias
+;  Straight up and down its whole span. A vertical contact INHERITS the
+;  direction the force already had rather than losing it: a blow travelling
+;  right that passes down through a lintel still has its momentum when it
+;  reaches the pillars, and that is what puts them over. Only a sideways
+;  contact overrides the direction, because there the geometry decides.
+        ld      a,(is_cur)
+        ld      e,a
+        ld      d,0
+        ld      hl,spread_dir
+        add     hl,de
+        ld      a,(hl)
+        ld      (is_down),a
+        ld      a,(is_cur)
+        ld      e,a
         call    block_ptr
         ld      a,(ix+BLK_LEN)
         ld      (is_n),a
@@ -769,7 +783,7 @@ is_span:
         ld      c,a
         ld      a,(is_col)
         ld      b,a
-        xor     a
+        ld      a,(is_down)
         call    is_relax
 is_below:
         ld      a,(is_cur)
@@ -780,7 +794,7 @@ is_below:
         ld      c,a
         ld      a,(is_col)
         ld      b,a
-        xor     a
+        ld      a,(is_down)
         call    is_relax
         ld      a,(is_col)
         inc     a
@@ -1057,6 +1071,38 @@ bs_onslope:
         ld      a,(ix+BLK_LEN)
         cp      2
         ret     nc
+
+;  An UPRIGHT that has been shoved goes over, whatever is underneath it.
+;  This is the piece the whole model was missing: with nothing destroyed,
+;  a pillar standing on the ground could absorb any blow and stay exactly
+;  where it was, because it could neither fall nor be pushed into an
+;  occupied cell. Now it topples, the tilt art shows it going, and it
+;  comes down BESIDE where it stood — so knocking the legs out actually
+;  does something.
+        ld      a,(ix+BLK_SHOVE)
+        or      a
+        jr      z,bs_slope_only
+        ld      a,(ix+BLK_TILT)
+        or      a
+        jr      nz,bs_slope_only    ; already over: it has had its go
+        call    block_is_tall
+        jr      z,bs_slope_only
+        ld      a,(ix+BLK_SHOVE)
+        bit     7,a
+        ld      a,TILT_D4
+        jr      z,bs_topple
+        ld      a,TILT_U4
+bs_topple:
+        ld      (ix+BLK_TILT),a
+        call    block_erase
+        ld      (ix+BLK_STATE),BS_TIP
+        ld      (ix+BLK_TIPT),TIP_FRAMES
+        ld      (ix+BLK_FELL),0
+        ld      a,1
+        ld      (bu_moved),a
+        jp      block_draw
+
+bs_slope_only:
         call    support_tilt        ; -> A = 0 / 1 downhill right / #FF left
         or      a
         ret     z
@@ -1091,6 +1137,16 @@ bsl_go:
         ld      a,1
         ld      (bu_moved),a
         jp      block_draw
+
+; ---- block_is_tall — IX = block. NZ if it is an upright ---------------------
+block_is_tall:
+        ld      e,(ix+BLK_PIECE)
+        ld      d,0
+        ld      hl,blk_tall_table
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        ret
 
 ; ---- support_tilt — IX = block -> A = 0 none, 1 downhill right, #FF left ---
 support_tilt:
@@ -1142,6 +1198,12 @@ bs_tipping:
         ld      (ix+BLK_TIPT),TIP_FRAMES
         jp      block_draw
 bs_tip_done:
+        ld      a,(ix+BLK_LEN)      ; an upright that has gone over does not
+        cp      2                   ; land where it stood — it comes down
+        jr      nc,bs_tip_drop      ; beside itself
+        call    block_push
+        ld      (ix+BLK_SHOVE),0    ; the push has been spent
+bs_tip_drop:
 ;  Once it is all the way over it ALWAYS lets go. A beam left parked at an
 ;  angle hangs in mid-air the moment its pivot is taken out from under it,
 ;  and no amount of re-checking makes that look like anything but a bug.
@@ -1450,12 +1512,14 @@ bsup_l:         db      0
 bsl_col:        db      0
 is_base:        db      0
 is_seed:        db      0
+is_dir:         db      0
 is_step:        db      0
 is_pass:        db      0
 is_chg:         db      0
 is_cur:         db      0
 is_out:         db      0
 is_side:        db      0
+is_down:        db      0
 is_col:         db      0
 is_n:           db      0
 is_dmg:         db      0

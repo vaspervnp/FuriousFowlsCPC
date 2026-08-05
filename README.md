@@ -3,7 +3,7 @@
 An Angry Birds for the **Amstrad CPC 464/6128**, written in Z80 assembly.
 Mode 0 (160x200, 16 colours) over a 320 px world panned by CRTC hardware
 scrolling; a slingshot, six birds, three kinds of pig, forty forts built
-from ten piece shapes in five materials, and a collapse model that drops
+from ten piece shapes in six materials, and a collapse model that drops
 the roof on whatever is underneath.
 
 Boot `dist/fowls.dsk` in any CPC emulator (or on real hardware) and
@@ -58,7 +58,7 @@ on screen in the wrong colour.
 | Sheet | Cells | Contents |
 |-------|-------|----------|
 | `creatures.png` | 54 of 16x32 | 6 birds + 3 pigs, one per row, **six states each** |
-| `blocks.png` | 50 of 16x16 | 10 piece shapes x **5 material sets**, one set per row |
+| `blocks.png` | 60 of 16x16 | 10 piece shapes x **6 material sets**, one set per row |
 | `scenery.png` | 14 of 32x64 | trees, bushes, clouds, a boulder, the slingshot |
 
 The six creature states, in sheet order, are `idle`, `blink`, `ready`,
@@ -158,8 +158,8 @@ FuriousFowlsCPC/
 | `#0400-#38FF` | creature art, 54 frames x 256 B |
 | `#3F80-#3FFF` | stack |
 | `#4000-#7FFF` | code, scenery run-length streams, the forty level records |
-| `#8000-#98FF` | block art, 50 pieces x 128 B |
-| `#9900-#BFFF` | game state |
+| `#8000-#9DFF` | block art, 60 pieces x 128 B |
+| `#9E00-#BFFF` | game state |
 | `#C000-#FFFF` | video RAM |
 
 The art does not fit in one loadable image below `#C000`, so the BASIC
@@ -210,6 +210,13 @@ pixel" maps computed in Python (`tools/gen_rot.py`), applied at level load
 to the ten pieces of whichever material set the level uses. A kilobyte of
 tables buys tilted art for every piece; storing four pre-tilted copies of
 all fifty block sprites would be 25 KB, and there is no 25 KB.
+
+**Uprights topple.** A piece standing on end does not merely get
+dislodged when something shoves it — it goes over, tilts through the same
+art the beams use, and comes down *beside* where it stood. This is the
+piece the model was missing: with nothing destroyed, a pillar on the
+ground could otherwise absorb any blow and stay exactly where it was,
+because it could neither fall nor be pushed into an occupied cell.
 
 **Nothing is ever removed.** Damage in this engine means DISPLACEMENT: a
 piece that takes more force than it can resist is *dislodged* — shoved a
