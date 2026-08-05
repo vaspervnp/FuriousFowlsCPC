@@ -148,6 +148,7 @@ SUP_TIPR                equ 1       ; held on the left: the right end drops
 SUP_TIPL                equ 2       ; held on the right: the left end drops
 SUP_FALL                equ 3       ; nothing under it anywhere
 TIP_FRAMES              equ 7       ; how long each tilt step is held
+SLIDE_FRAMES            equ 4       ; ...and how long a slide down one is
 MAX_BEAM                equ 8
 
 GRID_EMPTY              equ #FF     ; occupancy grid: no tenant

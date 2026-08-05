@@ -117,6 +117,11 @@ rr_ncol         equ rr_col0+1
 rr_y0           equ rr_col0+2
 rr_n            equ rr_col0+3
 
+ui_dirty        equ rr_col0+4   ; 1 = the status strip needs recomposing;
+                                ; done in the main loop, not wherever the
+                                ; count changed, because ui_blit is 13k
+                                ; T-states and pigs die inside the sweep
+
 st_scratch      equ rr_col0+8
 STATE_END       equ st_scratch+32
 

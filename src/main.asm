@@ -88,8 +88,24 @@ main_loop:
         call    kbd_scan
         call    hotkeys
         call    game_update
+        call    ui_refresh          ; ...if anything it shows has changed
         call    scroll_prep         ; stage the next column, in the border
         jr      main_loop
+
+; ----------------------------------------------------------------------------
+;  ui_refresh — recompose the status strip when something it shows has
+;  changed. Pigs die deep inside the collapse sweep, where stopping to
+;  redraw thirteen thousand T-states of text would be absurd; they raise a
+;  flag instead and it is honoured here.
+; ----------------------------------------------------------------------------
+ui_refresh:
+        ld      a,(ui_dirty)
+        or      a
+        ret     z
+        xor     a
+        ld      (ui_dirty),a
+        call    ui_compose
+        jp      ui_blit
 
 ; ----------------------------------------------------------------------------
 ;  hotkeys — R restarts the fort, N skips it (they are handy while you are

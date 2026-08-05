@@ -333,6 +333,8 @@ pig_kill:
         jr      z,pk_draw
         dec     a
         ld      (pigs_alive),a
+        ld      a,1
+        ld      (ui_dirty),a        ; the strip is counting them
 pk_draw:
         call    settle_ping         ; whatever it was holding up is loose now
         jp      pig_repose

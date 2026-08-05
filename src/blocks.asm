@@ -691,7 +691,7 @@ block_step:
 
         call    block_support
         or      a
-        ret     z                   ; SUP_STABLE: nothing to do
+        jr      z,bs_onslope        ; standing — but on the level?
         cp      SUP_FALL
         jr      z,bs_start_fall
         ld      c,a                 ; SUP_TIPR / SUP_TIPL
@@ -722,6 +722,88 @@ bs_start_fall:
         ld      (bu_moved),a
         ret
 
+; ============================================================================
+;  Standing on a slope
+;
+;  A roof does not sit politely on a lintel that has gone over — it follows
+;  it down and slides off the low side. This is the one piece of "things on
+;  a slope move" a grid can express, and without it the pieces on top of a
+;  tipping beam hang in the air while it rotates away beneath them, which
+;  is the single most obviously wrong thing you can watch happen.
+;
+;  Only single cells slide. A beam does not slide, it tips.
+; ============================================================================
+bs_onslope:
+        ld      a,(ix+BLK_LEN)
+        cp      2
+        ret     nc
+        call    support_tilt        ; -> A = 0 / 1 downhill right / #FF left
+        or      a
+        ret     z
+        ld      c,a
+        ld      a,(ix+BLK_TIPT)     ; a cell at a time, not a cell a frame
+        or      a
+        jr      z,bsl_go
+        dec     (ix+BLK_TIPT)
+        ld      a,1
+        ld      (bu_moved),a
+        ret
+bsl_go:
+        ld      a,(ix+BLK_COL)
+        add     a,c
+        cp      GRID_W
+        ret     nc                  ; off the edge of the world: leave it
+        ld      b,a
+        ld      c,(ix+BLK_ROW)
+        push    bc
+        call    cell_free
+        pop     bc
+        ret     nz                  ; something in the way: it stays put
+        ld      a,b                 ; block_erase clobbers B, so the column
+        ld      (bsl_col),a         ; it is moving to goes somewhere safe
+        call    block_erase
+        call    block_release
+        ld      a,(bsl_col)
+        ld      (ix+BLK_COL),a
+        ld      a,(bu_self)
+        call    block_claim
+        ld      (ix+BLK_TIPT),SLIDE_FRAMES
+        ld      a,1
+        ld      (bu_moved),a
+        jp      block_draw
+
+; ---- support_tilt — IX = block -> A = 0 none, 1 downhill right, #FF left ---
+support_tilt:
+        ld      b,(ix+BLK_COL)
+        ld      a,(ix+BLK_ROW)
+        inc     a
+        cp      GRID_H
+        jr      nc,st_none          ; the world floor is not a slope
+        ld      c,a
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        jr      z,st_none
+        bit     7,a
+        jr      nz,st_none          ; standing on a pig is not a slope either
+        push    ix
+        ld      e,a
+        call    block_ptr
+        ld      a,(ix+BLK_TILT)
+        pop     ix
+        or      a
+        ret     z
+        cp      TILT_U4             ; the D tilts drop to the right
+        jr      nc,st_left
+        ld      a,1
+        ret
+st_left:
+        ld      a,#FF
+        ret
+st_none:
+        xor     a
+        ret
+
 ; ---- tipping: one more step of lean, then let go ---------------------------
 bs_tipping:
         ld      a,1
@@ -740,14 +822,15 @@ bs_tipping:
         ld      (ix+BLK_TIPT),TIP_FRAMES
         jp      block_draw
 bs_tip_done:
-        call    span_below_clear
-        jr      nz,bs_lean          ; the pivot still holds it: it leans
+;  Once it is all the way over it ALWAYS lets go. A beam left parked at an
+;  angle hangs in mid-air the moment its pivot is taken out from under it,
+;  and no amount of re-checking makes that look like anything but a bug.
+;  Letting go means the fall code decides what happens next: if something
+;  is under it, it settles onto that flat — which is a roof coming down
+;  across the two pillars it has left — and if nothing is, it drops.
         ld      (ix+BLK_STATE),BS_FALL
         ld      (ix+BLK_VY),0
         ld      (ix+BLK_VY_I),1
-        ret
-bs_lean:
-        ld      (ix+BLK_STATE),BS_REST
         ret
 
 ; ---- falling ---------------------------------------------------------------
@@ -948,7 +1031,9 @@ block_land:
         ret     c                   ; a gentle settle harms nobody
         ld      b,CRUSH_PER_SPEED
         call    mul8
-        ld      (bl_dmg),a
+        ld      b,(ix+BLK_LEN)      ; a four-cell beam comes down with four
+        call    mul8                ; times the weight, which is the whole
+        ld      (bl_dmg),a          ; point of a roof falling on a pig
 
         ld      a,(ix+BLK_ROW)
         inc     a
@@ -1030,6 +1115,7 @@ bc_val:         db      0
 bc_n:           db      0
 sbc_n:          db      0
 bsup_l:         db      0
+bsl_col:        db      0
 bd_slope:       db      0
 bd_drop:        db      0
 bd_x:           dw      0
