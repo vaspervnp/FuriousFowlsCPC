@@ -15,6 +15,11 @@
 #  RAM, FOWLS.BIN at #4000, then CALL &4000.
 #
 #  --keys takes frame:key+ / frame:key- events (press and release).
+#
+#  NOTE for anyone reaching for m.set_write_callback to trap a stray write:
+#  the callback REPLACES the write, it does not observe it. Your handler has
+#  to do `mem[addr] = value` itself or the machine silently stops storing
+#  anything and you will spend a while wondering why the screen went blank.
 # ============================================================================
 import os
 import struct
