@@ -44,8 +44,15 @@ blocks          equ grid+GRID_SIZE          ; MAX_BLOCKS x BLK_SIZE
 pigs            equ blocks+MAX_BLOCKS*BLK_SIZE
 bird_queue      equ pigs+MAX_PIGS*ENT_SIZE  ; MAX_BIRDS creature types
 
+;  The tilted copies of the ten pieces of whichever material set this level
+;  uses, built at level load by applying the four rot_map tables. Storing
+;  the tilts for all five sets would be 25 KB; building the one set that is
+;  actually on screen costs 5 KB and about six frames, once.
+rot_art         equ bird_queue+MAX_BIRDS
+ROT_ART_SIZE    equ BLK_PIECES*ROT_TILTS*BLK_BYTES
+
 ; --- scalars ----------------------------------------------------------------
-vars            equ bird_queue+MAX_BIRDS
+vars            equ rot_art+ROT_ART_SIZE
 
 cam_x           equ vars+0      ; camera offset, CRTC chars (0..CAM_MAX)
 scroll_dir      equ vars+1      ; 0 hold, 1 right, #FF left

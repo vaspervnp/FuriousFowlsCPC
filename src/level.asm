@@ -32,6 +32,9 @@ level_load:
 
         ld      a,(hl)
         ld      (block_set),a
+        push    hl
+        call    rot_build           ; the tilted tiles for THIS material set
+        pop     hl
         inc     hl
         ld      a,(hl)              ; the fork's x, stored halved
         add     a,a
@@ -153,6 +156,13 @@ ll_done:
 ;  row byte, where rows only ever use four.
 ; ----------------------------------------------------------------------------
 unpack_cell:
+        ld      a,b                 ; the beam length rides in the top three
+        rlca                        ; bits of the row byte
+        rlca
+        rlca
+        and     #07
+        inc     a
+        ld      (ba_len),a
         ld      a,c
         and     #0F
         ld      d,a                 ; D = the piece or pig kind

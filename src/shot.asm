@@ -370,6 +370,17 @@ sc_grid:
         call    block_ptr
         ld      a,(sc_dmg)
         call    block_hit
+        ld      hl,(sh_vx)          ; a bird that hits and keeps going drags
+        ld      a,h                 ; the fort the way it is travelling
+        or      l
+        jr      z,sc_bounce
+        ld      a,h
+        rla
+        ld      a,1
+        jr      nc,sc_shove_go
+        ld      a,#FF
+sc_shove_go:
+        call    block_shove
         jr      sc_bounce
 sc_hit_pig:
         and     #7F

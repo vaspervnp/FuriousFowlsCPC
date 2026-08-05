@@ -59,6 +59,12 @@ BUILD = 'build'
 
 PIECE_CH = {'h': 0, 'v': 1, 'c': 2, 'b': 3, '/': 4,
             '\\': 5, 'a': 6, 'i': 7, 's': 8, 'x': 9}
+
+#  Pieces that are PLANKS: a run of them side by side is one rigid beam,
+#  not a row of independent cubes. That is what lets a lintel tip over the
+#  pillar it still has instead of dissolving into its cells.
+BEAM_CH = set('hs')
+MAX_BEAM = 8            # the length field is three bits
 CH_PIECE = {v: k for k, v in PIECE_CH.items()}
 PIG_CH = {'p': 0, 'P': 1, 'K': 2}
 CH_PIG = {v: k for k, v in PIG_CH.items()}
@@ -298,6 +304,32 @@ def from_text(path):
     return lv
 
 
+def merge_beams(blocks, path):
+    """Runs of identical plank cells in the same row become ONE beam.
+
+    The map file still writes `hhhh`, because that is the readable way to
+    draw a lintel; the engine gets a single four-cell object, because that
+    is the only way it can fall like one."""
+    out, byrow = [], {}
+    for ch, col, row in blocks:
+        if ch in BEAM_CH:
+            byrow.setdefault((row, ch), []).append(col)
+        else:
+            out.append((ch, col, row, 1))
+    for (row, ch), cols in byrow.items():
+        cols.sort()
+        run = [cols[0]]
+        for c in cols[1:]:
+            if c == run[-1] + 1 and len(run) < MAX_BEAM:
+                run.append(c)
+            else:
+                out.append((ch, run[0], row, len(run)))
+                run = [c]
+        out.append((ch, run[0], row, len(run)))
+    out.sort(key=lambda b: (b[2], b[1]))
+    return out
+
+
 def die(path, lineno, msg):
     where = '%s:%d' % (path, lineno) if lineno else path
     raise SystemExit('%s: %s' % (where, msg))
@@ -349,9 +381,9 @@ def compile_level(lv, path):
         die(path, 0, '%d pigs, at most %d fit' % (len(lv['pigs']), MAX_PIGS))
     if not lv['pigs']:
         die(path, 0, 'no pigs — the level can never be won')
-    if len(lv['blocks']) > MAX_BLOCKS:
-        die(path, 0, '%d blocks, at most %d fit'
-            % (len(lv['blocks']), MAX_BLOCKS))
+    if len(merge_beams(lv['blocks'], path)) > MAX_BLOCKS:
+        die(path, 0, '%d pieces after merging planks into beams, at most %d '
+            'fit' % (len(merge_beams(lv['blocks'], path)), MAX_BLOCKS))
 
     occupied = set()
     for ch, col, row in lv['blocks'] + lv['pigs']:
@@ -384,6 +416,8 @@ def compile_level(lv, path):
             die(path, 0, 'scenery cell %d is off the world at (%d,%d)'
                 % (cid, x, y))
 
+    beams = merge_beams(lv['blocks'], path)
+
     out = bytearray()
     out.append(SET_NAMES.index(lv['set']))
     out.append(lv['sling'] // 2)
@@ -392,12 +426,13 @@ def compile_level(lv, path):
         out.append(BIRD_NAMES.index(lv['birds'][i])
                    if i < len(lv['birds']) else 0)
     out.append(len(cells))
-    out.append(len(lv['blocks']))
+    out.append(len(beams))
     out.append(len(lv['pigs']))
     for cid, x, y in cells:
         out += bytes((cid, x // 4, y))
-    for ch, col, row in lv['blocks']:
-        out += bytes((PIECE_CH[ch] | (col << 4) & 0xF0, row | (col & 0x10)))
+    for ch, col, row, ln in beams:
+        out += bytes((PIECE_CH[ch] | (col << 4) & 0xF0,
+                      row | (col & 0x10) | ((ln - 1) << 5)))
     for ch, col, row in lv['pigs']:
         out += bytes((PIG_CH[ch] | (col << 4) & 0xF0, row | (col & 0x10)))
     return bytes(out)

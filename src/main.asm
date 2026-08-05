@@ -23,6 +23,7 @@
 
         include "level_defs.inc"    ; the level compiler owns the geometry
         include "art_defs.inc"      ; the sheet importer owns the art shapes
+        include "rot_defs.inc"      ; ...and gen_rot.py the tilt steps
         include "hardware.inc"
         include "state.inc"
 
@@ -253,6 +254,7 @@ sp_oldcam:      db      0
         include "art_tables.inc"    ; block strengths, scenery strip offsets
         include "level_tables.inc"  ; where each of the forty records starts
         include "tables.inc"        ; font, strings, sine
+        include "rot_tables.inc"    ; the four tilt maps
 
 scenery_rle:
         incbin  "scenery.raw"

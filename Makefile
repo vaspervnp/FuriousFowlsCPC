@@ -42,7 +42,7 @@ ART_OUT   := $(BUILD)/creatures.raw $(BUILD)/blocks.raw \
              $(BUILD)/scenery.raw $(BUILD)/art_defs.inc $(BUILD)/art_tables.inc
 LVL_OUT   := $(BUILD)/levels.raw $(BUILD)/level_defs.inc \
              $(BUILD)/level_tables.inc
-TABLES    := $(BUILD)/tables.inc
+TABLES    := $(BUILD)/tables.inc $(BUILD)/rot_tables.inc $(BUILD)/rot_defs.inc
 GENERATED := $(ART_OUT) $(LVL_OUT) $(TABLES)
 
 ifdef FORCE
@@ -74,9 +74,13 @@ $(LVL_OUT): tools/levels.py tools/sheetdefs.py $(LEVELTXT)
 	@test -n "$(LEVELTXT)" || $(PYTHON) tools/levels.py --export
 	$(PYTHON) tools/levels.py
 
-$(TABLES): tools/gen_tables.py
+$(BUILD)/tables.inc: tools/gen_tables.py
 	@mkdir -p $(BUILD)
-	$(PYTHON) tools/gen_tables.py > $(TABLES)
+	$(PYTHON) tools/gen_tables.py > $@
+
+$(BUILD)/rot_tables.inc $(BUILD)/rot_defs.inc: tools/gen_rot.py
+	@mkdir -p $(BUILD)
+	$(PYTHON) tools/gen_rot.py > $(BUILD)/rot_tables.inc
 
 art: $(ART_OUT)
 levels: $(LVL_OUT)

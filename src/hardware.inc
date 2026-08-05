@@ -123,19 +123,32 @@ DIE_LEN                 equ 24
 ;  Blocks. One 16x16 cell each, anchored to the grid; a block only ever
 ;  moves DOWN, which is what makes a collapse cheap enough to run at 50 Hz.
 ; ---------------------------------------------------------------------------
-BLK_SIZE                equ 8
+BLK_SIZE                equ 16
 BLK_STATE               equ 0       ; BS_*
 BLK_PIECE               equ 1       ; 0..9, indexes the current material set
-BLK_COL                 equ 2
+BLK_COL                 equ 2       ; its LEFTMOST cell
 BLK_ROW                 equ 3
 BLK_HP                  equ 4
 BLK_YOFF                equ 5       ; sub-cell fall offset, 0..15 pixels
-BLK_VY                  equ 6       ; fall speed, 8.8
-BLK_VY_I                equ 7
+BLK_VY                  equ 6       ; sub-frame counter for the fall
+BLK_VY_I                equ 7       ; fall speed, whole pixels per frame
+BLK_LEN                 equ 8       ; cells wide: planks merge into beams
+BLK_TILT                equ 9       ; 0 upright, else a rot_slope index
+BLK_TIPT                equ 10      ; frames until the next tilt step
+BLK_SHOVE               equ 11      ; #FF / 1: a bird dragged across it
 
 BS_FREE                 equ 0
 BS_REST                 equ 1
 BS_FALL                 equ 2
+BS_TIP                  equ 3       ; going over the end it still has
+
+;  What block_support decides about a piece
+SUP_STABLE              equ 0
+SUP_TIPR                equ 1       ; held on the left: the right end drops
+SUP_TIPL                equ 2       ; held on the right: the left end drops
+SUP_FALL                equ 3       ; nothing under it anywhere
+TIP_FRAMES              equ 7       ; how long each tilt step is held
+MAX_BEAM                equ 8
 
 GRID_EMPTY              equ #FF     ; occupancy grid: no tenant
 GRID_PIG                equ #80     ; ...or this bit set means "pig N"
@@ -159,7 +172,7 @@ BOUNCE_NUM              equ 3       ; keep 3/8 of the speed off a surface
 BOUNCE_DEN              equ 8
 REST_SPEED              equ 1       ; below this the bird has stopped
 
-DMG_PER_SPEED           equ 9       ; block damage per px/frame of impact
+DMG_PER_SPEED           equ 12      ; block damage per px/frame of impact
 CRUSH_PER_SPEED         equ 7       ; ...and per px/frame of a falling block
 
 ; ---------------------------------------------------------------------------

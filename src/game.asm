@@ -92,6 +92,8 @@ game_update:
 ;  AIM
 ; ----------------------------------------------------------------------------
 gu_aim:
+        call    blocks_update       ; costs nothing unless something is
+        call    pigs_update         ; actually still moving down there
         xor     a
         ld      (ga_moved),a
 

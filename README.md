@@ -12,6 +12,7 @@ Boot `dist/fowls.dsk` in any CPC emulator (or on real hardware) and
 | Key | Action |
 |-----|--------|
 | ↑ ↓ | raise / lower the aim |
+| ← → | look around the fort before you shoot; the view stays where you leave it |
 | SPACE | hold to haul the sling back, release to launch |
 | SPACE | (on a banner) continue |
 | R | restart this fort |
@@ -192,6 +193,29 @@ it is `((in[i] AND #AA) >> 1) OR ((in[i-1] AND #55) << 1)`, which on a
 a mode whose pixels are four screen pixels wide and whose camera pans in
 steps of four. So x rounds down to even and the blitter has one path.
 
+**A plank is not a row of cubes.** The level file still draws a lintel as
+`hhhh`, because that is the readable way to write one, but the compiler
+merges runs of plank cells into a single BEAM that owns all four grid cells
+and falls as one rigid object. Support is then judged at its two ENDS:
+both held is stable, one held TIPS over that end, neither is a free fall.
+Knock out the pillar under one side of a doorway and the lintel goes over
+the pillar it still has, instead of shedding its left half.
+
+The tipping is drawn by stepping the beam's own cells down a constant
+number of scanlines and drawing each with a tilted copy of the tile. The
+four angles are chosen so that step is a whole number of lines, which is
+what lets a multi-cell plank rotate convincingly with no trigonometry at
+runtime — the geometry is four 256-byte "destination pixel -> source
+pixel" maps computed in Python (`tools/gen_rot.py`), applied at level load
+to the ten pieces of whichever material set the level uses. A kilobyte of
+tables buys tilted art for every piece; storing four pre-tilted copies of
+all fifty block sprites would be 25 KB, and there is no 25 KB.
+
+A bird that lands on a fort and keeps sliding SHOVES it: the direction is
+recorded on the piece it hit, and decides which way that piece goes over
+when it loses its footing. A piece held only by its neighbours does not
+survive being dragged sideways at all.
+
 **Forts collapse cellularly, not physically.** Rigid-body physics is not
 happening on a 4 MHz Z80, and it is not what makes the genre work anyway —
 what makes it work is that structures *lose their footing*. Every piece
@@ -202,11 +226,10 @@ accelerating downward, dealing damage on landing in proportion to its
 speed. Pigs are in the same grid, so a falling wall crushes them without a
 line of special-case code.
 
-A piece is supported by the ground, by whatever is in the cell below, or —
-and this is what lets a lintel span a doorway — by being **wedged**, with
-occupied cells to both left and right. Knock the pillar out from under one
-end and that end loses its floor, falls, and takes its neighbour's support
-with it, so the run unzips from the outside in, one block per sweep.
+A single cell is supported by the ground, by whatever is in the cell below,
+or by being **wedged** between two neighbours. Rubble that has merely
+fallen takes no damage from landing, so a fort you knock down leaves a
+heap behind instead of tidying itself away.
 
 The sweep reads two hundred cells and costs the better part of half a
 frame, so it does not run unconditionally: it is armed by damage and
@@ -235,7 +258,9 @@ ballistics, block damage and collapse, pigs falling and being crushed, the
 turn machine, level progression, and the status strip.
 
 Not there yet: sound, bird special abilities, a title screen, a score
-table, and the between-level scoring flourish. The flight frame currently
+table, and the between-level scoring flourish. A piece resting on a beam
+that has tipped is still drawn upright at its grid position, which the
+grid model cannot express any better. The flight frame currently
 runs at about 25 Hz while the camera is tracking a shot; the remaining
 cost is the bird's erase-and-redraw and the scroll seam, both of which have
 obvious room left.
