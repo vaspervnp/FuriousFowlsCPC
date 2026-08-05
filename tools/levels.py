@@ -71,6 +71,13 @@ CH_PIG = {v: k for k, v in PIG_CH.items()}
 SLING_CH = 'Y'
 
 SET_NAMES = [s[0] for s in BLOCK_SETS]
+
+#  The tiers run from the flimsiest material to the toughest, so a fort
+#  gets harder to knock down as well as more elaborate. The order is
+#  derived from the sets' own toughness rather than written out, so adding
+#  a material drops it into the right place by itself.
+SET_ORDER = [i for i, _ in sorted(enumerate(BLOCK_SETS),
+                                  key=lambda e: e[1][1])]
 BIRD_NAMES = [b[0] for b in BIRDS]
 PIG_NAMES = [p[0] for p in PIGS]
 
@@ -138,9 +145,9 @@ def s_stack(col, n):
 
 def default_level(n):
     """n is 1..40."""
-    tier = (n - 1) // 8                      # 0..4, one per material set
-    step = (n - 1) % 8
-    mset = SET_NAMES[tier]
+    tier = (n - 1) * len(SET_ORDER) // LEVELS   # every material gets a turn
+    step = (n - 1) % 8                          # ...and every fort shape too
+    mset = SET_NAMES[SET_ORDER[tier]]
 
     blocks, pigs = [], []
     if step in (0, 1):
@@ -185,7 +192,7 @@ def default_level(n):
     birds = [cast[i % len(cast)] for i in range(n_birds)]
 
     scenery = [('cloud_a', 16, 10), ('cloud_b', 188, 26)]
-    if tier != 1:
+    if n % 5:
         scenery.append(('tree_a' if n % 2 else 'tree_b', 248, GROUND_Y - 128))
     scenery.append(('bush_a' if n % 3 else 'bush_b', 88, GROUND_Y - 64))
     if n % 4 == 0:
