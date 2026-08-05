@@ -37,7 +37,9 @@ shot_aim_pos:
         ld      a,(aim_power)       ; pull = power * PULL_MAX / POWER_MAX,
         srl     a                   ; near enough at /4 for POWER_MAX 60
         srl     a
-        ld      (sa_pull),a
+        and     #FE                 ; ...in even steps, because every change
+        ld      (sa_pull),a         ; costs a full erase-and-redraw and the
+                                    ; blitter quantises x to even anyway
 
         ld      a,(aim_angle)       ; x = sling_x - 8 - cos(angle)*pull/128
         call    cos256
@@ -113,7 +115,50 @@ sdr_redraw:
         ld      (sh_py),hl
         ld      a,(sa_frame)
         ld      (sh_frame),a
+        call    sling_band          ; the elastic, then the bird over its ends
         jp      shot_draw
+
+; ----------------------------------------------------------------------------
+;  sling_band — two lines from the fork tips to the pouch.
+;
+;  There is no sprite for this: the elastic changes shape every time the
+;  pull changes, so it is drawn as lines and wiped by the aim erase, which
+;  is why that rectangle covers the whole fork and not just the bird.
+; ----------------------------------------------------------------------------
+SLING_TIP_Y     equ SLING_CELL_Y+11 ; the grips, in world lines
+SLING_TIP_DL    equ 11              ; ...and either side of the fork centre
+SLING_TIP_DR    equ 10
+
+sling_band:
+        ld      a,(game_state)
+        cp      GS_AIM
+        ret     nz
+        ld      a,(mode0_pen_bytes+PEN_BROWN)
+        ld      (pp_pen),a
+
+        ld      hl,(sh_px)          ; the pouch end, shared by both lines
+        ld      de,CR_WIDTH/2
+        add     hl,de
+        ld      (ln_x1),hl
+        ld      a,(sh_py)
+        add     a,18
+        ld      (ln_y1),a
+        ld      a,SLING_TIP_Y
+        ld      (ln_y0),a
+
+        ld      a,(sling_x)
+        sub     SLING_TIP_DL
+        ld      l,a
+        ld      h,0
+        ld      (ln_x0),hl
+        call    draw_line
+
+        ld      a,(sling_x)
+        add     a,SLING_TIP_DR
+        ld      l,a
+        ld      h,0
+        ld      (ln_x0),hl
+        jp      draw_line
 
 ; ============================================================================
 ;  shot_launch — turn the aim into a velocity and let go.
@@ -156,6 +201,7 @@ shot_launch:
         ld      (sh_rest),a
         ld      (aim_power),a
         ld      (charging),a
+        ld      (cam_free),a        ; the shot re-arms the camera follow
         ld      a,FR_FLY
         ld      (sh_frame),a
         ld      a,1
@@ -492,6 +538,9 @@ shot_erase:
         ret     z
         xor     a
         ld      (sh_drawn),a
+        ld      a,(game_state)
+        cp      GS_AIM
+        jr      z,se_aim            ; on the sling: the elastic has to go too
         ld      hl,(sh_px)
         bit     7,h
         jr      z,se_xok
@@ -513,6 +562,62 @@ se_yok:
         ld      a,l
         ld      (rr_y0),a
         ld      a,CR_HEIGHT
+        ld      (rr_n),a
+        jp      redraw_rect
+
+;  The aim rectangle is the bird's box UNION the elastic's, worked out each
+;  time rather than fixed. That matters more than it looks: a whole game
+;  frame of aiming costs about one display frame, so a rectangle twice the
+;  size it needs to be does not merely cost time, it puts the erase and the
+;  redraw in DIFFERENT displayed frames and the bird visibly blinks.
+se_aim:
+        ld      a,(sling_x)         ; left edge: the far grip or the bird
+        sub     SLING_TIP_DL
+        ld      c,a
+        ld      a,(sh_px)
+        cp      c
+        jr      c,se_x0
+        ld      a,c
+se_x0:
+        srl     a
+        srl     a
+        ld      (rr_col0),a
+        ld      c,a
+
+        ld      a,(sling_x)         ; right edge: the near grip or the bird
+        add     a,SLING_TIP_DR
+        ld      b,a
+        ld      a,(sh_px)
+        add     a,CR_WIDTH-1
+        cp      b
+        jr      nc,se_x1
+        ld      a,b
+se_x1:
+        srl     a
+        srl     a
+        sub     c
+        inc     a
+        ld      (rr_ncol),a
+
+        ld      a,(sh_py)           ; top: the bird is always above the grips
+        ld      c,a
+        cp      SLING_TIP_Y
+        jr      c,se_y0
+        ld      c,SLING_TIP_Y
+se_y0:
+        ld      a,c
+        ld      (rr_y0),a
+        ld      b,a
+        ld      a,(sh_py)           ; bottom: ...and always below them
+        add     a,CR_HEIGHT
+        ld      c,a
+        ld      a,SLING_TIP_Y+2
+        cp      c
+        jr      c,se_y1
+        ld      c,a
+se_y1:
+        ld      a,c
+        sub     b
         ld      (rr_n),a
         jp      redraw_rect
 

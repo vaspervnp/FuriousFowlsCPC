@@ -167,6 +167,44 @@ ga_redraw:
         ld      a,(ga_moved)
         or      a
         call    nz,shot_draw_ready
+        ; fall through to the free look
+
+; ----------------------------------------------------------------------------
+;  Free look. Left and right pan the camera while you are aiming, so you can
+;  go and see what you are shooting at; the view then STAYS where you left
+;  it, because snapping back the moment you let go would defeat the point.
+;  Launching a bird re-arms the follow.
+; ----------------------------------------------------------------------------
+camera_look:
+        xor     a
+        ld      (scroll_dir),a
+        ld      a,(kbd_state+KEY_RIGHT_ROW)
+        and     KEY_RIGHT_MASK
+        jr      z,cl_left
+        ld      a,1
+        ld      (cam_free),a
+        ld      a,(cam_x)
+        cp      CAM_MAX
+        ret     nc
+        ld      a,1
+        ld      (scroll_dir),a
+        ret
+cl_left:
+        ld      a,(kbd_state+KEY_LEFT_ROW)
+        and     KEY_LEFT_MASK
+        jr      z,cl_idle
+        ld      a,1
+        ld      (cam_free),a
+        ld      a,(cam_x)
+        or      a
+        ret     z
+        ld      a,#FF
+        ld      (scroll_dir),a
+        ret
+cl_idle:
+        ld      a,(cam_free)
+        or      a
+        ret     nz                  ; parked by the player: hold it there
         jp      camera_follow_sling
 
 ; ----------------------------------------------------------------------------
@@ -195,12 +233,14 @@ gu_settle:
         call    pigs_update         ; to RUN: a pig may still be dying
         or      c
         jr      nz,gs_busy
+        call    camera_follow_shot  ; keep watching where the shot landed
         ld      a,(settle_t)
         dec     a
         ld      (settle_t),a
         ret     nz
         jr      gs_turn_over
 gs_busy:
+        call    camera_follow_shot
         ld      a,SETTLE_FRAMES
         ld      (settle_t),a
         ret
@@ -242,6 +282,7 @@ gs_nobonus:
 ;  CLEAR / FAIL — a banner, then SPACE
 ; ----------------------------------------------------------------------------
 gu_banner:
+        call    camera_follow_sling ; drift back to the sling while it waits
         ld      a,(banner_t)
         or      a
         jr      z,gb_wait

@@ -360,6 +360,221 @@ rp_loop:
         djnz    rp_loop
         ret
 
+; ============================================================================
+;  Single pixels and lines, in world space.
+;
+;  Everything else in the engine draws in rectangles, because rectangles are
+;  what a blitter and an eraser can be fast about. The slingshot's elastic
+;  is the exception: it is two lines that move every time the pull changes,
+;  and there is no sensible sprite for it.
+;
+;  plot_px — HL = world x, A = line, (pp_pen) = the both-pixel Mode 0 byte.
+;  Silently drops anything outside the camera window or the play area, so
+;  callers need no clipping of their own.
+; ============================================================================
+plot_px:
+        cp      SCREEN_LINES
+        ret     nc
+        cp      PLAY_TOP
+        ret     c
+        ld      (pp_y),a
+        bit     7,h
+        ret     nz                  ; negative x
+        ld      (pp_x),hl
+        srl     h
+        rr      l
+        srl     h
+        rr      l                   ; world char column
+        ld      a,h
+        or      a
+        ret     nz
+        ld      c,l
+        ld      a,(cam_x)
+        ld      b,a
+        ld      a,c
+        sub     b
+        ret     c                   ; left of the window
+        cp      VIEW_CHARS
+        ret     nc                  ; right of it
+        ld      d,c
+        ld      a,(pp_y)
+        ld      e,a
+        call    world_to_screen
+        ld      a,(pp_x)
+        bit     1,a
+        jr      z,pp_even
+        inc     l                   ; odd byte of the char; the base is even
+pp_even:
+        ld      a,(pp_x)
+        rra                         ; bit 0 -> carry: which pixel of the byte
+        ld      a,(pp_pen)
+        jr      c,pp_right
+        and     #AA
+        ld      c,a
+        ld      a,(hl)
+        and     #55
+        or      c
+        ld      (hl),a
+        ret
+pp_right:
+        and     #55
+        ld      c,a
+        ld      a,(hl)
+        and     #AA
+        or      c
+        ld      (hl),a
+        ret
+
+; ----------------------------------------------------------------------------
+;  draw_line — from (ln_x0, ln_y0) to (ln_x1, ln_y1) in (pp_pen), two
+;  scanlines thick so it reads as a band rather than a hair.
+;
+;  Plain DDA stepped along the major axis, with the loop count FIXED at
+;  major+1 before the first pixel. The textbook Bresenham with its
+;  compare-against-the-endpoint exit is a trap here: get one sign wrong and
+;  it never reaches the endpoint, and a line routine that does not terminate
+;  takes the whole frame with it.
+; ----------------------------------------------------------------------------
+draw_line:
+        ld      hl,(ln_x1)          ; dx and its direction
+        ld      de,(ln_x0)
+        or      a
+        sbc     hl,de
+        ld      a,1
+        bit     7,h
+        jr      z,dl_dxpos
+        call    neg16
+        ld      a,#FF
+dl_dxpos:
+        ld      (dl_sx),a
+        ld      a,h
+        or      a
+        ret     nz                  ; longer than 255 px: not our business
+        ld      a,l
+        ld      (dl_dx),a
+
+        ld      a,(ln_y1)           ; dy and its direction
+        ld      c,a
+        ld      a,(ln_y0)
+        ld      b,a
+        ld      a,c
+        sub     b
+        ld      c,1
+        jr      nc,dl_dypos
+        neg
+        ld      c,#FF
+dl_dypos:
+        ld      (dl_dy),a
+        ld      a,c
+        ld      (dl_sy),a
+
+        ld      hl,(ln_x0)          ; the running point
+        ld      (dl_x),hl
+        ld      a,(ln_y0)
+        ld      (dl_y),a
+        xor     a
+        ld      (dl_err),a
+
+        ld      a,(dl_dx)
+        ld      hl,dl_dy
+        cp      (hl)
+        jr      c,dl_ymajor
+
+; ---- x is the major axis ---------------------------------------------------
+        inc     a
+        ld      (dl_cnt),a
+dlx_loop:
+        call    dl_plot
+        ld      hl,(dl_x)           ; one step along x
+        ld      a,(dl_sx)
+        call    dl_addsigned
+        ld      (dl_x),hl
+        ld      a,(dl_err)          ; err += dy; carry a step of y when it
+        ld      hl,dl_dy            ; passes dx
+        add     a,(hl)
+        ld      hl,dl_dx
+        cp      (hl)
+        jr      c,dlx_noy
+        sub     (hl)
+        call    dl_stepy
+dlx_noy:
+        ld      (dl_err),a
+        ld      hl,dl_cnt
+        dec     (hl)
+        jr      nz,dlx_loop
+        ret
+
+; ---- y is the major axis ---------------------------------------------------
+dl_ymajor:
+        ld      a,(dl_dy)
+        inc     a
+        ld      (dl_cnt),a
+dly_loop:
+        call    dl_plot
+        call    dl_stepy
+        ld      a,(dl_err)
+        ld      hl,dl_dx
+        add     a,(hl)
+        ld      hl,dl_dy
+        cp      (hl)
+        jr      c,dly_nox
+        sub     (hl)
+        push    af
+        ld      hl,(dl_x)
+        ld      a,(dl_sx)
+        call    dl_addsigned
+        ld      (dl_x),hl
+        pop     af
+dly_nox:
+        ld      (dl_err),a
+        ld      hl,dl_cnt
+        dec     (hl)
+        jr      nz,dly_loop
+        ret
+
+dl_plot:
+        ld      hl,(dl_x)
+        ld      a,(dl_y)
+        push    hl
+        call    plot_px
+        pop     hl
+        ld      a,(dl_y)
+        inc     a
+        jp      plot_px
+
+dl_stepy:                           ; preserves A across the y step
+        push    af
+        ld      a,(dl_y)
+        ld      hl,dl_sy
+        add     a,(hl)
+        ld      (dl_y),a
+        pop     af
+        ret
+
+dl_addsigned:                       ; HL += sign-extended A
+        ld      e,a
+        add     a,a
+        sbc     a,a
+        ld      d,a
+        add     hl,de
+        ret
+
+pp_x:           dw      0
+pp_y:           db      0
+pp_pen:         db      0
+ln_x0:          dw      0
+ln_y0:          db      0
+ln_x1:          dw      0
+ln_y1:          db      0
+dl_x:           dw      0
+dl_y:           db      0
+dl_dx:          db      0
+dl_dy:          db      0
+dl_sx:          db      0
+dl_sy:          db      0
+dl_err:         db      0
+dl_cnt:         db      0
+
 ; ----------------------------------------------------------------------------
 ;  Mode 0 pixel packing: both pixels of a byte in the same pen.
 ;    left  pixel: pen bit0->b7, bit1->b3, bit2->b5, bit3->b1

@@ -604,10 +604,12 @@ bl_pig:
 bl_done:
         pop     ix
 bl_self:
-        ld      a,(bl_speed)
-        ld      b,CRUSH_PER_SPEED/2
-        call    mul8
-        jp      block_hit
+        ret                         ; A piece that has merely FALLEN stays
+                                    ; where it landed. Only the bird and the
+                                    ; weight of other pieces break things;
+                                    ; hitting the ground does not, or the
+                                    ; rubble tidies itself away and the fort
+                                    ; you knocked down leaves nothing behind.
 
 ; ----------------------------------------------------------------------------
 ;  mul8 — A = A * B, saturating at 255. Clobbers B, C.

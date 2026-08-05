@@ -131,6 +131,12 @@ apply_scroll:
 ;  ones either way; setting cam_x early just makes the clipping in
 ;  redraw_rect and spr_blit agree with the frame we are drawing for.
 ; ----------------------------------------------------------------------------
+;  The clamp here is the one that matters. The world is only CAM_MAX+1
+;  camera positions wide, and past that the window asks for world columns
+;  that do not exist — whose ring cells still hold whatever was last drawn
+;  in them, so the level appears to repeat. Whoever set scroll_dir is not
+;  trusted to have checked.
+; ----------------------------------------------------------------------------
 scroll_prep:
         ld      a,(flip_dir)
         or      a
@@ -140,28 +146,50 @@ scroll_prep:
         ret     z
         ld      c,a
         ld      a,(cam_x)
-        ld      (sp_oldcam),a
         bit     7,c
         jr      z,sp_right
+        or      a
+        ret     z                   ; already hard against the left edge
+        ld      (sp_oldcam),a
         dec     a                   ; left: the new camera IS the new column
         ld      (spr_cam),a
         ld      (spr_col),a
         jr      sp_draw
 sp_right:
+        cp      CAM_MAX
+        ret     nc                  ; already hard against the right edge
+        ld      (sp_oldcam),a
         inc     a
         ld      (spr_cam),a
         add     a,VIEW_CHARS-1      ; right: the new trailing edge
         ld      (spr_col),a
 sp_draw:
+;  WAIT FOR THE BEAM. The seam column lands in ring cells that, until the
+;  flip, alias the LEFTMOST visible column one row down — so drawing it
+;  while the beam is still crossing the display rewrites what the player is
+;  looking at, and the left edge of the turf crawls and tears. Started in
+;  slice 2 the draw is always behind the beam for this frame (it writes row
+;  r at ~104+11r, the beam showed that cell at 40+8r) and always ahead of
+;  it for the next (344+8r), for every row.
+        ld      bc,0
+sp_wait:
+        ld      a,(int_slice)
+        cp      2
+        jr      z,sp_go
+        dec     bc                  ; never hang if the ISR is not ticking
+        ld      a,b
+        or      c
+        jr      nz,sp_wait
+sp_go:
         ld      a,(spr_cam)
         ld      (cam_x),a
         ld      a,(spr_col)
         ld      (rr_col0),a
         ld      a,1
         ld      (rr_ncol),a
-        ld      a,PLAY_TOP
-        ld      (rr_y0),a
-        ld      a,SCREEN_LINES-PLAY_TOP
+        xor     a                   ; the WHOLE column, row 0 included:
+        ld      (rr_y0),a           ; ui_blit repaints the status strip
+        ld      a,SCREEN_LINES      ; immediately afterwards anyway
         ld      (rr_n),a
         call    redraw_rect
         call    ui_blit             ; row 0 scrolls too: lay it down again
@@ -178,11 +206,29 @@ sp_draw:
 ; ============================================================================
 frame_interrupt:
         push    af
+        push    bc
         push    hl
+        ld      bc,PPI_PORT_B
+        in      a,(c)
+        rra                         ; the one that fires during VSYNC is the
+        jr      nc,fi_mid           ; anchor for the raster slice counter
+        xor     a
+        ld      (int_slice),a
+        jr      fi_count
+fi_mid:
+        ld      hl,int_slice
+        inc     (hl)
+        ld      a,(hl)
+        cp      6                   ; six per frame; if the anchor was missed
+        jr      c,fi_count          ; (a long DI section) resync anyway
+        xor     a
+        ld      (int_slice),a
+fi_count:
         ld      hl,(irq_counter)
         inc     hl
         ld      (irq_counter),hl
         pop     hl
+        pop     bc
         pop     af
         ei
         ret
