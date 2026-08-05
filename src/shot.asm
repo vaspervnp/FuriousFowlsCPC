@@ -392,6 +392,12 @@ sc_bounce:
         ld      a,(sh_hits)
         inc     a
         ld      (sh_hits),a
+        cp      MAX_HITS            ; a bird rattling around inside a fort
+        jr      c,sc_bounce_on      ; can bounce between two pieces without
+        xor     a                   ; ever slowing enough to look settled,
+        ld      (sh_state),a        ; and the turn would never end
+        ret
+sc_bounce_on:
 
         ld      hl,(sh_vx)          ; step back out of what we just hit
         sra     h

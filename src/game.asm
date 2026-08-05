@@ -224,12 +224,19 @@ gu_fly:
         ld      (game_state),a
         ld      a,SETTLE_FRAMES
         ld      (settle_t),a
+        ld      a,SETTLE_MAX        ; a hard stop on the whole settle, in
+        ld      (settle_cap),a      ; case the rubble finds a way to jiggle
         ret
 
 ; ----------------------------------------------------------------------------
 ;  SETTLE — the turn is not over until the rubble stops
 ; ----------------------------------------------------------------------------
 gu_settle:
+        ld      a,(settle_cap)      ; the turn cannot last for ever, whatever
+        or      a                   ; the physics thinks
+        jr      z,gs_turn_over
+        dec     a
+        ld      (settle_cap),a
         call    blocks_update
         ld      c,a                 ; both have to be quiet, and both have
         call    pigs_update         ; to RUN: a pig may still be dying

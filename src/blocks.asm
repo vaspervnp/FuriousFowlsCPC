@@ -609,6 +609,7 @@ block_hit:
         ld      (ix+BLK_VY),0
         ld      (ix+BLK_VY_I),1
         ld      (ix+BLK_TIPT),0
+        ld      (ix+BLK_FELL),0
         ld      hl,(score)
         ld      de,25
         add     hl,de
@@ -652,137 +653,163 @@ bp_test:
 
 ; ============================================================================
 ;  impact_spread — (is_seed) = the piece the bird landed on, A = the force
-;  there, C = the direction it was travelling.
+;  there, C = the side it was pushed from.
 ;
 ;  The blow does not stop at the piece it lands on: it runs through
 ;  everything in contact with it, losing a FIFTH OF THE ORIGINAL at every
-;  hop. So the piece hit takes all of it, everything touching that takes
-;  four fifths, the ring beyond three fifths, and the fifth ring takes
-;  nothing — which is what makes the walk stop on its own, with no depth
-;  limit to tune and no way for a loop in the contact graph to run away.
+;  hop. So the piece hit takes all of it, everything touching it four
+;  fifths, the ring beyond three fifths, and the fifth ring nothing at all
+;  — which is what makes it stop.
 ;
-;  The direction travels with the force, so a fort hit from the left leans
-;  right all the way through instead of only where the bird touched.
+;  WHICH SIDE MATTERS. The direction handed to a neighbour is where the
+;  force is coming FROM, worked out per contact: a piece touched on its
+;  left gets pushed left-to-right, whatever the bird was doing. So the
+;  original vector genuinely changes as it travels, and a fort folds away
+;  from the impact instead of every piece leaning the same way.
 ;
-;  DISCOVERY RUNS FIRST, damage second. Dislodging a piece moves it in the
-;  grid, and a walk that mutated the grid underneath itself would lose its
-;  way and visit things twice.
+;  It is RELAXED, not walked with a queue: repeated passes, each handing
+;  what a piece has on to its contacts, keeping only the STRONGEST force
+;  that has reached each one. That is what lets the force come back to a
+;  piece it has already touched and carry on decaying, without the cycle
+;  in the contact graph turning into an endless loop — a value that only
+;  ever increases, and is capped, cannot go round for ever. Five hops
+;  reach zero, so five passes are enough.
 ; ============================================================================
+SPREAD_PASSES   equ 5
+
 impact_spread:
         ld      (is_base),a
-        ld      a,c
-        ld      (is_dir),a
-        ld      hl,spread_lvl
-        ld      de,spread_lvl+1
-        ld      bc,MAX_BLOCKS-1
+        ld      hl,spread_force     ; nothing has been reached yet
+        ld      de,spread_force+1
+        ld      bc,MAX_BLOCKS*2+MAX_PIGS-1
         ld      (hl),0
         ldir
-        ld      hl,spread_pig
-        ld      de,spread_pig+1
-        ld      bc,MAX_PIGS-1
-        ld      (hl),0
-        ldir
+        ld      a,(is_base)
+        or      a
+        ret     z
+        call    div5_up             ; a fifth, rounded up, so the fifth ring
+        ld      (is_step),a         ; is certainly nothing
 
-        ld      a,(is_seed)         ; seed the queue with the piece it hit
-        ld      hl,spread_q
+        ld      a,(is_seed)         ; seed it where the bird landed
+        ld      e,a
+        ld      d,0
+        ld      hl,spread_force
+        add     hl,de
+        ld      a,(is_base)
         ld      (hl),a
-        ld      e,a
-        ld      d,0
-        ld      hl,spread_lvl
+        ld      hl,spread_dir
         add     hl,de
-        ld      (hl),1
-        ld      a,1
-        ld      (is_tail),a
+        ld      a,c
+        ld      (hl),a
+
+        ld      a,SPREAD_PASSES
+        ld      (is_pass),a
+is_sweep:
         xor     a
-        ld      (is_head),a
-
-; ---- pass one: walk the contacts -------------------------------------------
-is_walk:
-        ld      a,(is_head)
-        ld      hl,is_tail
+        ld      (is_chg),a
+        ld      (is_cur),a
+is_one:
+        ld      a,(is_cur)
+        ld      hl,block_count
         cp      (hl)
-        jp      nc,is_apply
+        jp      nc,is_pass_end
         ld      e,a
         ld      d,0
-        ld      hl,spread_q
+        ld      hl,spread_force
         add     hl,de
         ld      a,(hl)
-        ld      (is_cur),a
-        ld      hl,is_head
-        inc     (hl)
-
-        ld      e,a                 ; how far out is it?
-        ld      d,0
-        ld      hl,spread_lvl
-        add     hl,de
-        ld      a,(hl)
-        dec     a
-        ld      (is_hop),a
-        cp      5
-        jp      nc,is_walk          ; past the fifth ring: nothing to pass on
+        or      a
+        jp      z,is_next           ; the force has not got here
+        ld      c,a
+        ld      a,(is_step)
+        ld      b,a
+        ld      a,c
+        sub     b
+        jp      c,is_next           ; ...and stops here
+        jp      z,is_next
+        ld      (is_out),a          ; what it passes on
 
         ld      a,(is_cur)
         ld      e,a
         call    block_ptr
-        ld      a,(ix+BLK_COL)      ; the cell to its left
+        ld      a,(ix+BLK_COL)      ; to its left: pushed further left
         or      a
-        jr      z,is_w_right
+        jr      z,is_o_right
         dec     a
         ld      b,a
         ld      c,(ix+BLK_ROW)
-        call    is_probe
-is_w_right:
+        ld      a,#FF
+        call    is_relax
+is_o_right:
         ld      a,(is_cur)
         ld      e,a
         call    block_ptr
-        ld      a,(ix+BLK_COL)      ; ...and past its right end
+        ld      a,(ix+BLK_COL)      ; past its right end: pushed right
         add     a,(ix+BLK_LEN)
         ld      b,a
         ld      c,(ix+BLK_ROW)
-        call    is_probe
+        ld      a,1
+        call    is_relax
 
-        ld      a,(is_cur)          ; then every cell above and below
-        ld      e,a
+        ld      a,(is_cur)          ; and straight up and down its whole
+        ld      e,a                 ; span, which carries no sideways bias
         call    block_ptr
         ld      a,(ix+BLK_LEN)
         ld      (is_n),a
         ld      a,(ix+BLK_COL)
         ld      (is_col),a
-is_w_span:
+is_span:
         ld      a,(is_cur)
         ld      e,a
         call    block_ptr
-        ld      a,(is_col)
-        ld      b,a
         ld      a,(ix+BLK_ROW)
         or      a
-        jr      z,is_w_below
+        jr      z,is_below
         dec     a
         ld      c,a
-        push    bc
-        call    is_probe
-        pop     bc
-is_w_below:
+        ld      a,(is_col)
+        ld      b,a
+        xor     a
+        call    is_relax
+is_below:
         ld      a,(is_cur)
         ld      e,a
         call    block_ptr
-        ld      a,(is_col)
-        ld      b,a
         ld      a,(ix+BLK_ROW)
         inc     a
         ld      c,a
-        call    is_probe
+        ld      a,(is_col)
+        ld      b,a
+        xor     a
+        call    is_relax
         ld      a,(is_col)
         inc     a
         ld      (is_col),a
         ld      a,(is_n)
         dec     a
         ld      (is_n),a
-        jr      nz,is_w_span
-        jp      is_walk
+        jr      nz,is_span
+is_next:
+        ld      a,(is_cur)
+        inc     a
+        ld      (is_cur),a
+        jp      is_one
+is_pass_end:
+        ld      a,(is_chg)
+        or      a
+        jr      z,is_apply          ; a fixed point: no more to hand out
+        ld      a,(is_pass)
+        dec     a
+        ld      (is_pass),a
+        jp      nz,is_sweep
 
-; ---- is_probe — B = column, C = row. Record whoever is there, one hop out --
-is_probe:
+; ---- is_relax — B = column, C = row, A = the side it arrives from ----------
+;  Keeps only the strongest force that has reached that piece. Because the
+;  stored value only ever goes UP and is bounded by the original blow, the
+;  passes cannot cycle for ever.
+; ----------------------------------------------------------------------------
+is_relax:
+        ld      (is_side),a
         ld      a,b
         cp      GRID_W
         ret     nc
@@ -794,129 +821,99 @@ is_probe:
         cp      GRID_EMPTY
         ret     z
         bit     7,a
-        jr      nz,is_probe_pig
-        ld      (is_found),a
+        jr      nz,is_relax_pig
         ld      e,a
         ld      d,0
-        ld      hl,spread_lvl
+        ld      hl,spread_force
         add     hl,de
-        ld      a,(hl)
-        or      a
-        ret     nz                  ; already reached, by a shorter path
-        ld      a,(is_hop)
-        add     a,2
+        ld      a,(is_out)
+        cp      (hl)
+        ret     c                   ; something stronger got here first
+        ret     z
         ld      (hl),a
-        ld      hl,is_tail          ; queue it
-        ld      a,(hl)
-        inc     (hl)
-        ld      e,a
-        ld      d,0
-        ld      hl,spread_q
+        ld      hl,spread_dir
         add     hl,de
-        ld      a,(is_found)
+        ld      a,(is_side)
         ld      (hl),a
+        ld      a,1
+        ld      (is_chg),a
         ret
-is_probe_pig:
+is_relax_pig:
         and     #7F
         ld      e,a
         ld      d,0
-        ld      hl,spread_pig
+        ld      hl,spread_pigf
         add     hl,de
-        ld      a,(hl)
-        or      a
-        ret     nz
-        ld      a,(is_hop)
-        add     a,2
+        ld      a,(is_out)
+        cp      (hl)
+        ret     c
+        ret     z
         ld      (hl),a
+        ld      a,1
+        ld      (is_chg),a
         ret
 
-; ---- pass two: hand out the force ------------------------------------------
+; ---- and now hand it out ---------------------------------------------------
+;  Applying moves pieces about, so it happens only once the walk is over.
 is_apply:
-        ld      a,(is_base)         ; a fifth of the blow, rounded up so the
-        call    div5_up             ; fifth ring is certain to be nothing
-        ld      (is_step),a
         xor     a
-        ld      (is_head),a
+        ld      (is_cur),a
 is_ap_loop:
-        ld      a,(is_head)
-        ld      hl,is_tail
+        ld      a,(is_cur)
+        ld      hl,block_count
         cp      (hl)
         jr      nc,is_ap_pigs
         ld      e,a
         ld      d,0
-        ld      hl,spread_q
+        ld      hl,spread_force
         add     hl,de
         ld      a,(hl)
-        ld      (is_cur),a
-        ld      hl,is_head
-        inc     (hl)
-        ld      e,a
-        ld      d,0
-        ld      hl,spread_lvl
-        add     hl,de
-        ld      a,(hl)
-        dec     a
-        call    is_force            ; -> A = what reaches this ring
         or      a
-        jr      z,is_ap_loop
+        jr      z,is_ap_next
         ld      (is_dmg),a
+        ld      hl,spread_dir
+        add     hl,de
+        ld      a,(hl)
+        ld      (is_side),a
         ld      a,(is_cur)
         ld      e,a
         call    block_ptr
-        ld      a,(is_dir)
-        ld      (ix+BLK_SHOVE),a    ; the vector travels with the force
+        ld      a,(is_side)
+        or      a
+        jr      z,is_ap_hit         ; straight down or up: no sideways bias
+        ld      (ix+BLK_SHOVE),a
+is_ap_hit:
         ld      a,(is_dmg)
         call    block_hit
+is_ap_next:
+        ld      a,(is_cur)
+        inc     a
+        ld      (is_cur),a
         jr      is_ap_loop
 is_ap_pigs:
         xor     a
-        ld      (is_n),a
+        ld      (is_cur),a
 is_ap_pig:
-        ld      a,(is_n)
+        ld      a,(is_cur)
         ld      e,a
         ld      d,0
-        ld      hl,spread_pig
+        ld      hl,spread_pigf
         add     hl,de
         ld      a,(hl)
         or      a
         jr      z,is_ap_pnext
-        dec     a
-        call    is_force
-        or      a
-        jr      z,is_ap_pnext
         ld      (is_dmg),a
-        ld      a,(is_n)
+        ld      a,(is_cur)
         ld      e,a
         call    pig_ptr
         ld      a,(is_dmg)
         call    pig_hit
 is_ap_pnext:
-        ld      a,(is_n)
+        ld      a,(is_cur)
         inc     a
-        ld      (is_n),a
+        ld      (is_cur),a
         cp      MAX_PIGS
         jr      c,is_ap_pig
-        ret
-
-; ---- is_force — A = hop -> A = base - hop*step, floored at zero ------------
-is_force:
-        ld      b,a
-        ld      a,(is_base)
-        or      a
-        ret     z
-        ld      c,a
-        ld      a,b
-        or      a
-        ld      a,c
-        ret     z                   ; the piece it hit takes all of it
-        ld      a,(is_step)
-        ld      c,a
-        ld      a,(is_base)
-isf_loop:
-        sub     c
-        ret     c
-        ret     z
-        djnz    isf_loop
         ret
 
 ; ---- div5_up — A = ceil(A / 5) ---------------------------------------------
@@ -1040,6 +1037,7 @@ bs_start_fall:
         ld      (ix+BLK_STATE),BS_FALL
         ld      (ix+BLK_VY),0
         ld      (ix+BLK_VY_I),1
+        ld      (ix+BLK_FELL),0
         ld      a,1
         ld      (bu_moved),a
         ret
@@ -1153,6 +1151,7 @@ bs_tip_done:
         ld      (ix+BLK_STATE),BS_FALL
         ld      (ix+BLK_VY),0
         ld      (ix+BLK_VY_I),1
+        ld      (ix+BLK_FELL),0
         ret
 
 ; ---- falling ---------------------------------------------------------------
@@ -1185,7 +1184,17 @@ bs_carry:
         jr      z,bs_descend
         ld      (ix+BLK_YOFF),0     ; it has arrived on something
         ld      (ix+BLK_STATE),BS_REST
+;  Straighten up ONLY if it actually went somewhere. A beam whose pivot
+;  never let it descend has merely rotated in place, and resetting its tilt
+;  makes it eligible to tip all over again — tip, land, straighten, tip,
+;  for ever, with the sweep reporting movement every frame and the turn
+;  never ending. Leaving the lean on is both what it should look like and
+;  what stops the loop.
+        ld      a,(ix+BLK_FELL)
+        or      a
+        jr      z,bs_land_go
         ld      (ix+BLK_TILT),TILT_NONE
+bs_land_go:
         call    block_land
         ld      a,(ix+BLK_STATE)
         or      a
@@ -1193,6 +1202,7 @@ bs_carry:
         jp      block_draw
 bs_descend:
         call    block_release
+        ld      (ix+BLK_FELL),1     ; it has genuinely gone somewhere
         inc     (ix+BLK_ROW)
         ld      a,(ix+BLK_YOFF)
         sub     CELL_PX
@@ -1439,17 +1449,16 @@ sbc_n:          db      0
 bsup_l:         db      0
 bsl_col:        db      0
 is_base:        db      0
-is_dir:         db      0
 is_seed:        db      0
 is_step:        db      0
-is_head:        db      0
-is_tail:        db      0
+is_pass:        db      0
+is_chg:         db      0
 is_cur:         db      0
-is_hop:         db      0
+is_out:         db      0
+is_side:        db      0
 is_col:         db      0
 is_n:           db      0
 is_dmg:         db      0
-is_found:       db      0
 bd_slope:       db      0
 bd_drop:        db      0
 bd_x:           dw      0

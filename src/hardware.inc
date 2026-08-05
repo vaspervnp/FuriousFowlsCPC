@@ -135,7 +135,8 @@ BLK_VY_I                equ 7       ; fall speed, whole pixels per frame
 BLK_LEN                 equ 8       ; cells wide: planks merge into beams
 BLK_TILT                equ 9       ; 0 upright, else a rot_slope index
 BLK_TIPT                equ 10      ; frames until the next tilt step
-BLK_SHOVE               equ 11      ; #FF / 1: a bird dragged across it
+BLK_SHOVE               equ 11      ; #FF / 1: which side it was pushed from
+BLK_FELL                equ 12      ; 1 = it has actually changed row
 
 BS_FREE                 equ 0
 BS_REST                 equ 1
@@ -172,6 +173,8 @@ BIRD_R                  equ 11      ; collision radius about the bird centre
 BOUNCE_NUM              equ 3       ; keep 3/8 of the speed off a surface
 BOUNCE_DEN              equ 8
 REST_SPEED              equ 1       ; below this the bird has stopped
+MAX_HITS                equ 10      ; ...and after this many it has spent
+                                    ; itself, wherever it happens to be
 
 DMG_PER_SPEED           equ 12      ; block damage per px/frame of impact
 CRUSH_PER_SPEED         equ 7       ; ...and per px/frame of a falling block
@@ -185,6 +188,7 @@ GS_SETTLE               equ 2       ; waiting for the dust to fall
 GS_CLEAR                equ 3       ; every pig popped
 GS_FAIL                 equ 4       ; out of birds
 SETTLE_FRAMES           equ 60      ; quiet frames before the turn ends
+SETTLE_MAX              equ 250     ; ...and the longest a settle may run
 BANNER_FRAMES           equ 100
 
 ; ---------------------------------------------------------------------------
