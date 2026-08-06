@@ -258,12 +258,27 @@ sp_go:
         ld      (rr_col0),a
         ld      a,1
         ld      (rr_ncol),a
-        xor     a                   ; the WHOLE column, row 0 included:
-        ld      (rr_y0),a           ; ui_blit repaints the status strip
-        ld      a,SCREEN_LINES      ; immediately afterwards anyway
+;  The HUD goes down FIRST, the way Creepers does it: row 0 is the first
+;  thing the next frame's beam shows, and it is a straight LDIR, so it
+;  wants to be finished before the long part starts rather than queued
+;  behind it. Then the column itself, rows 8..199 only — repainting row 0
+;  underneath a strip that has just been laid on top of it is work with
+;  nothing to show for it, and this draw is racing the raster.
+        call    ui_blit
+        ld      a,PLAY_TOP
+        ld      (rr_y0),a
+        ld      a,SCREEN_LINES-PLAY_TOP
         ld      (rr_n),a
         call    redraw_rect
-        call    ui_blit             ; row 0 scrolls too: lay it down again
+
+;  The column just rebuilt came from the MODEL, and the aim dots are not in
+;  the model — any that fell in it are gone, while their saved bytes still
+;  claim to describe the background underneath them. An impossible angle
+;  makes the next shot_draw_ready lay the whole aim down again.
+        ld      a,#FF
+        ld      (ad_angle),a
+        xor     a
+        ld      (dot_n),a
         ld      a,(sp_oldcam)       ; the flip has not happened yet
         ld      (cam_x),a
         ld      a,1

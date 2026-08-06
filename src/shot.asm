@@ -196,10 +196,11 @@ sdr_go:
 ;  the rope while the eyes close.
         ld      a,(se_narrow)
         or      a
-        jp      nz,shot_draw
+        jr      nz,sdr_pose_only    ; a blink leaves the elastic alone...
         call    sling_band          ; the elastic, then the bird over its ends
-        call    shot_draw
-        jp      aim_dots
+sdr_pose_only:
+        call    shot_draw           ; ...but the bird is blitted over any dot
+        jp      aim_dots            ; that falls in its box, so they go back on
 
 ; ----------------------------------------------------------------------------
 ;  shot_draw_rect — the bird is furniture too, as far as an erase is
