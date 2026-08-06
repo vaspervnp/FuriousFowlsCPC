@@ -77,6 +77,61 @@ SLING_CH = 'Y'
 
 SET_NAMES = [s[0] for s in BLOCK_SETS]
 
+# ===========================================================================
+#  Themes — the sky and the ground under it.
+#
+#  This is the whole of the per-level background, and it costs no art at
+#  all. The sky is PEN 0, which is also the sprite transparency key, so
+#  nothing in the game ever draws in it: change the hardware colour behind
+#  it and only the sky moves. The ground is a stack of bands built from the
+#  pens that are already loaded, so a theme is a handful of bytes rather
+#  than a second set of tiles.
+#
+#  Each theme: sky pen (a PEN_ index, whose HARDWARE colour is overridden),
+#  the hardware colour to put there, and the strata as (scanlines, pen)
+#  from the grass line down. The strata must add up to SCREEN_LINES minus
+#  GROUND_Y, and assert_strata says so if they do not.
+# ===========================================================================
+GROUND_BANDS = SCREEN_LINES_TOTAL = 200
+
+#  THE SKY MUST BE A COLOUR NO PEN IS USING. Pen 0 is only the sky, but
+#  the sixteen hardware colours behind the other fifteen pens belong to
+#  the art — set the sky to HW_ORANGE and every wooden thing in the game
+#  is the same colour as the sky behind it, which is what the first cut of
+#  this did. The six below are drawn from the eleven CPC colours the
+#  palette does not otherwise load.
+THEMES = [
+    # name      sky hardware colour     strata: (lines, pen) top to bottom
+    ('day',     'HW_SKY_BLUE',       [(4, 6), (4, 7), (10, 4), (2, 11),
+                                      (6, 4), (2, 11), (4, 4)]),
+    ('dawn',    'HW_PASTEL_MAGENTA', [(4, 6), (4, 7), (10, 13), (2, 4),
+                                      (6, 13), (2, 4), (4, 13)]),
+    ('dusk',    'HW_MAUVE',          [(4, 7), (4, 11), (8, 11), (2, 4),
+                                      (8, 11), (2, 4), (4, 11)]),
+    #  HW_CYAN is (0,128,128) — the darkest colour the palette is not
+    #  already using. HW_PURPLE was tried and it is (255,0,128): a hot
+    #  magenta, which is a great many things but is not night.
+    ('night',   'HW_CYAN',           [(4, 7), (4, 11), (10, 11), (2, 1),
+                                      (6, 11), (2, 1), (4, 11)]),
+    ('snow',    'HW_PASTEL_CYAN',    [(6, 2), (4, 14), (8, 2), (2, 10),
+                                      (6, 14), (2, 10), (4, 2)]),
+    ('desert',  'HW_YELLOW',         [(4, 13), (4, 4), (10, 13), (2, 4),
+                                      (6, 13), (2, 4), (4, 13)]),
+]
+THEME_NAMES = [t[0] for t in THEMES]
+
+
+def assert_strata():
+    want = SCREEN_LINES_TOTAL - GROUND_Y
+    for name, _sky, bands in THEMES:
+        got = sum(n for n, _p in bands)
+        if got != want:
+            raise SystemExit('theme %r: strata are %d lines, the ground is %d'
+                             % (name, got, want))
+
+
+assert_strata()
+
 #  There is one material now, so `set` is a constant and the tiering that
 #  used to walk from the flimsiest to the toughest is gone with it. What
 #  makes a late level hard is how the fort is BUILT, not what it is made
@@ -402,7 +457,14 @@ def default_level(n):
     if n % 5:
         scenery.append(('tree_a' if n % 2 else 'tree_b', 208, GROUND_Y - 128))
 
-    return dict(name='FORT %02d' % n, set=SET_NAMES[0], sling=24, birds=birds,
+    #  The sky and the ground change every few forts, so the run of fifty
+    #  does not look like one long afternoon. Seven is coprime with six, so
+    #  the cycle does not line up with the eight-shape rotation and no two
+    #  neighbouring forts share a look.
+    theme = THEME_NAMES[(n // 7) % len(THEME_NAMES)]
+
+    return dict(name='FORT %02d' % n, set=SET_NAMES[0], theme=theme,
+                sling=24, birds=birds,
                 scenery=scenery, blocks=blocks, pigs=pigs)
 
 
@@ -429,6 +491,7 @@ def to_text(lv):
                'the ground.' % (GRID_W, GRID_H, CELL))
     out.append('name    %s' % lv['name'])
     out.append('set     %s' % lv['set'])
+    out.append('theme   %s' % lv['theme'])
     out.append('sling   %d' % lv['sling'])
     out.append('birds   %s' % ' '.join(lv['birds']))
     out.append('scenery %s' % ' ; '.join('%s %d %d' % s for s in lv['scenery']))
@@ -439,8 +502,8 @@ def to_text(lv):
 
 
 def from_text(path):
-    lv = dict(name='', set='wood', sling=24, birds=[], scenery=[],
-              blocks=[], pigs=[])
+    lv = dict(name='', set='wood', theme=THEME_NAMES[0], sling=24,
+              birds=[], scenery=[], blocks=[], pigs=[])
     maplines = []
     in_map = False
     for lineno, raw in enumerate(open(path), 1):
@@ -465,6 +528,11 @@ def from_text(path):
                 die(path, lineno, 'unknown block set %r (have: %s)'
                     % (val, ', '.join(SET_NAMES)))
             lv['set'] = val
+        elif key == 'theme':
+            if val not in THEME_NAMES:
+                die(path, lineno, 'unknown theme %r (have: %s)'
+                    % (val, ', '.join(THEME_NAMES)))
+            lv['theme'] = val
         elif key == 'sling':
             lv['sling'] = int(val)
         elif key == 'birds':
@@ -609,12 +677,13 @@ SCENERY_OBJECTS = {
 #  Binary form
 #
 #    0    block set
-#    1    slingshot x, in pixels / 2   (0..159 covers the 320 px world)
-#    2    bird count      3..8  bird types
-#    9    scenery cell count
-#    10   block count
-#    11   pig count
-#    12.. scenery cells: cell id, x/2, y      (3 bytes each)
+#    1    theme        sky colour and ground strata
+#    2    slingshot x, in pixels / 2   (0..159 covers the 320 px world)
+#    3    bird count      4..9  bird types
+#    10   scenery cell count
+#    11   block count
+#    12   pig count
+#    13.. scenery cells: cell id, x/2, y      (3 bytes each)
 #    ..   blocks: piece | col<<4, row         (2 bytes each)
 #    ..   pigs:   type  | col<<4, row         (2 bytes each)
 #
@@ -669,6 +738,7 @@ def compile_level(lv, path):
 
     out = bytearray()
     out.append(SET_NAMES.index(lv['set']))
+    out.append(THEME_NAMES.index(lv['theme']))
     out.append(lv['sling'] // 2)
     out.append(len(lv['birds']))
     for i in range(MAX_BIRDS):
@@ -744,6 +814,28 @@ def main(argv):
         for i in range(0, LEVELS, 8):
             f.write('        dw      %s\n'
                     % ','.join(str(v) for v in offs[i:i + 8]))
+        #  One sky colour and one stack of ground bands per theme. The
+        #  strata run (lines, art byte) with a zero terminator, which is
+        #  the format scene_init already reads.
+        f.write('\ntheme_sky:              ; hardware ink for PEN 0\n')
+        f.write('        db      %s\n'
+                % ','.join(t[1] for t in THEMES))
+        f.write('\ntheme_ofs:              ; ...and where its strata start\n')
+        off, bodies = 0, []
+        offsets = []
+        for name, _sky, bands in THEMES:
+            offsets.append(off)
+            body = ''.join('        db      %d,#%X%X   ; %s\n'
+                           % (n, pen, pen, name) for n, pen in bands)
+            body += '        db      0\n'
+            bodies.append(body)
+            off += len(bands) * 2 + 1
+        f.write('        db      %s\n'
+                % ','.join(str(v) for v in offsets))
+        f.write('\ntheme_strata:\n')
+        for body in bodies:
+            f.write(body)
+        f.write('\nTHEME_COUNT      equ %d\n' % len(THEMES))
     print('levels.raw     %6d bytes  (%d levels, largest %d)'
           % (len(data), LEVELS, max(len(r) for r in recs)))
 

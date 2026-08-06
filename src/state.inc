@@ -4,6 +4,12 @@
 ;  space: this RAM sits above the loaded image, so nothing here costs a
 ;  byte on disk. Change a size and everything below it moves; the assert
 ;  at the bottom catches the day it stops fitting.
+;
+;  WHAT IT DOES NOT CATCH IS TWO NAMES ON ONE BYTE. These are equates, not
+;  reservations — write `foo equ vars+10` next to a `bar equ vars+10` that
+;  is already there and the assembler is perfectly happy, and you find out
+;  on screen. `make check-state` walks this file and says so instead; it
+;  runs on every build.
 ; ============================================================================
 
 ; --- the column renderer's working area -------------------------------------
@@ -80,6 +86,15 @@ music_ok        equ st_scratch+4    ; 1 = rot_art still holds the tune
 esc_armed       equ st_scratch+2    ; one ESC on its own does nothing:
 esc_t           equ st_scratch+3    ; a mis-hit mid-shot should not throw
                                     ; the turn away
+level_theme     equ st_scratch+7    ; sky colour and ground strata.
+                                    ;  IT WENT AT vars+10 FIRST, which is
+                                    ;  sling_x. level_load wrote the theme
+                                    ;  and then wrote the fork's x straight
+                                    ;  over it, so the ground came out right
+                                    ;  — scene_init runs before that — and
+                                    ;  the sky came out wrong, because
+                                    ;  palette_apply runs after.
+
 tries           equ st_scratch+5    ; goes taken at THIS fort. Lives out
                                     ; here with the other things that
                                     ; survive a level load, because a

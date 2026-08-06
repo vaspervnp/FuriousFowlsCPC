@@ -25,13 +25,28 @@
 ;  all 80 columns and is worth building once.
 ; ----------------------------------------------------------------------------
 scene_init:
+        ld      a,(level_theme)     ; which stack of bands this fort uses
+        cp      THEME_COUNT
+        jr      c,si_theme
+        xor     a
+si_theme:
+        ld      e,a
+        ld      d,0
+        ld      hl,theme_ofs
+        add     hl,de
+        ld      e,(hl)
+        ld      d,0
+        ld      hl,theme_strata
+        add     hl,de
+        ld      (si_bands),hl
+
         ld      hl,bg_template      ; sky above the turf line
         ld      de,bg_template+1
         ld      bc,GROUND_Y*2-1
         ld      (hl),0
         ldir
         ld      hl,bg_template+GROUND_Y*2
-        ld      de,turf_strata
+        ld      de,(si_bands)
 si_band:
         ld      a,(de)              ; band height in scanlines
         or      a
@@ -48,18 +63,12 @@ si_row:
         djnz    si_row
         jr      si_band
 
-;  Four strata down from the grass. The two brown seams break up what is
-;  otherwise a big flat slab of orange.
-turf_strata:
-        db      4,  #66             ; bright grass
-        db      4,  #77             ; roots
-        db      10, #44             ; dirt
-        db      2,  #BB             ; a seam of clay
-        db      6,  #44
-        db      2,  #BB
-        db      4,  #44
-        db      0
-        assert  SCREEN_LINES-GROUND_Y == 4+4+10+2+6+2+4
+si_bands:       dw      0
+
+;  The bands themselves are in level_tables.inc, one stack per theme, and
+;  tools/levels.py checks that every stack adds up to the depth of the
+;  ground before it writes them. Four strata down from the grass, with two
+;  seams to break up what is otherwise a big flat slab.
 
 ; ============================================================================
 ;  scene_build — compose one world char column into colbuf, for the lines

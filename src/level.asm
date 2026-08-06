@@ -32,8 +32,12 @@ level_load:
 
         ld      a,(hl)
         ld      (block_set),a
+        inc     hl
+        ld      a,(hl)              ; the sky and the ground under it
+        ld      (level_theme),a
         push    hl
         call    rot_build           ; the tilted tiles for THIS material set
+        call    scene_init          ; ...and this fort's sky and strata
         pop     hl
         inc     hl
         ld      a,(hl)              ; the fork's x, stored halved

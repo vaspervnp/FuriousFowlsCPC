@@ -7,6 +7,7 @@
 #    make dsk           disk image     -> dist/fowls.dsk
 #    make sprites-export  write assets/sheets/*.png so you can edit the art
 #    make levels-export   write assets/levels/*.txt so you can edit the forts
+#    make check-state   state.inc overlaps, and theme skies vs the pens
 #    make manual        render manual.md / manual-el.md -> dist/*.pdf
 #    make run           launch dist/fowls.dsk in RetroVirtualMachine
 #    make clean         remove build/ and dist/
@@ -62,7 +63,7 @@ EXEC_ADDR := 4000
 ART_ADDR  := C000
 
 .PHONY: all asm dsk run clean sprites-export levels-export sounds-export \
-        art levels sounds manual
+        art levels sounds manual check-state
 
 all: dsk
 
@@ -99,6 +100,7 @@ asm: $(BIN) $(ARTBIN)
 
 $(BIN): $(SOURCES) $(GENERATED) Makefile
 	@mkdir -p $(BUILD)
+	$(PYTHON) tools/checkstate.py
 	$(RASM) $(SRCDIR)/main.asm -I$(SRCDIR) -I$(BUILD) -ob $(BIN) -os $(SYM) -s
 
 $(ARTBIN): $(SRCDIR)/art.asm $(BUILD)/creatures.raw $(BUILD)/sin.raw \
@@ -156,6 +158,10 @@ $(DSK): $(BIN) $(ARTBIN) $(LOADER) $(SPLASH) $(SCORES)
 	@echo "--- catalogue of $(DSK) ---"
 	$(IDSK) $(DSK) -l
 	$(PYTHON) tools/dsk2ext.py $(DSK)
+
+# ---- the two things the assembler cannot check -----------------------------
+check-state:
+	$(PYTHON) tools/checkstate.py
 
 # ---- manuals ---------------------------------------------------------------
 #  The renderer understands exactly the Markdown these two files use and

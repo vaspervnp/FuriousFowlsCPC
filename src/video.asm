@@ -130,6 +130,21 @@ palette_black:
         jr      palette_load
 
 palette_apply:
+;  Patch the sky in before loading. The table is in RAM-writable code, and
+;  the border goes with it: a level whose sky is dusk orange with a blue
+;  border round it looks like a mistake, because it is one.
+        ld      a,(level_theme)
+        cp      THEME_COUNT
+        jr      c,pa_theme
+        xor     a
+pa_theme:
+        ld      e,a
+        ld      d,0
+        ld      hl,theme_sky
+        add     hl,de
+        ld      a,(hl)
+        ld      (palette_game),a
+        ld      (palette_game+16),a
         ld      hl,palette_game
         jr      palette_load
 
@@ -137,6 +152,11 @@ palette_apply:
 ;  The palette. Index = pen = the art palette index in tools/artlib.py, so
 ;  a pixel drawn 'orange' in the spritesheet is orange on the CPC.
 ; ----------------------------------------------------------------------------
+;  PEN 0 IS THE ONLY ONE A LEVEL MAY REPAINT, and it can be repainted
+;  freely: it is the sprite transparency key, so nothing in the game ever
+;  draws in it, and changing the hardware colour behind it moves the sky
+;  and nothing else. That is the whole of the per-level sky — no art, no
+;  second palette, one byte in the level record.
 palette_game:
         db      HW_SKY_BLUE         ; 0  sky / sprite transparency
         db      HW_BLACK            ; 1  outline

@@ -273,6 +273,11 @@ fort number. The eight shapes — hut, bridge, pyramid, tower, gatehouse,
 keep, manor, citadel — rotate for variety, but the citadel only turns up
 once you are most of the way through.
 
+**The sky and the ground change every few forts** — day, dawn, dusk,
+night, snow and desert — so fifty forts do not look like one long
+afternoon. It is the same world underneath: the theme moves the colour
+behind the sky and restacks the bands of soil, and nothing else.
+
 The forts stand in three places: an outbuilding on the left, the main fort
 in the middle, and an annexe on the right. Late forts have all three, and
 they are meant to lean on each other. Bringing the outbuilding down onto

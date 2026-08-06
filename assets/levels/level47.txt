@@ -2,6 +2,7 @@
 # grid is 32x16 cells of 10 px; the last map line sits on the ground.
 name    FORT 47
 set     wood
+theme   day
 sling   24
 birds   red yellow blue black white green
 scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_a 44 104 ; tree_a 208 40
