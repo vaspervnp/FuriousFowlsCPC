@@ -112,14 +112,17 @@ shot_draw_ready:
         jr      sdr_frame
 
 sdr_offscreen:
-;  Coming back has to redraw everything: the columns out here were rebuilt
-;  from the model while the camera was away, which took the aim dots with
-;  them and left their saved bytes describing a background that no longer
-;  exists. An impossible angle guarantees the next call takes the long way.
+;  Coming back has to redraw everything, so an impossible angle guarantees
+;  the next call in the window takes the long way.
+;
+;  The dots are NOT forgotten here. Out of the window their cells alias a
+;  column the camera IS showing, so this is the one place that must not
+;  write them back — and forgetting them instead leaves five pixels on the
+;  screen that nothing knows how to erase. scroll_prep restores them at
+;  the seam, where the beam has already passed, which is both correct and
+;  the only safe moment.
         ld      a,#FF
         ld      (ad_angle),a
-        xor     a
-        ld      (dot_n),a
         ret
 
 sdr_frame:
