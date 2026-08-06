@@ -79,7 +79,26 @@ shot_aim_pos:
 ;  Work out where it goes FIRST, and if that is where it already is, leave
 ;  the screen alone.
 ; ----------------------------------------------------------------------------
+;  IS THE SLING EVEN ON SCREEN? The blitter and plot_px both clip, but the
+;  RESTORES do not — they replay ring cells they were told to. Ring cell
+;  (row r, col x) is the same cell as (r-1, x+40), so putting the bird back
+;  at column six writes over column forty-six one row up. That is invisible
+;  while the camera is at the sling and column forty-six is not; pan right
+;  and it is a slingshot hanging in mid-air. Nothing to erase and nothing
+;  to draw out here, so do neither.
 shot_draw_ready:
+        ld      hl,(sh_px)
+        srl     h
+        rr      l
+        srl     h
+        rr      l                   ; the bird's char column
+        ld      a,(cam_x)
+        ld      b,a
+        ld      a,l
+        sub     b
+        jr      c,sdr_offscreen     ; left of the window
+        cp      VIEW_CHARS
+        jr      nc,sdr_offscreen    ; ...or right of it
         ld      c,FR_READY
         ld      a,(aim_power)
         or      a
@@ -90,6 +109,19 @@ shot_draw_ready:
         cp      5
         jr      nc,sdr_frame
         ld      c,FR_BLINK
+        jr      sdr_frame
+
+sdr_offscreen:
+;  Coming back has to redraw everything: the columns out here were rebuilt
+;  from the model while the camera was away, which took the aim dots with
+;  them and left their saved bytes describing a background that no longer
+;  exists. An impossible angle guarantees the next call takes the long way.
+        ld      a,#FF
+        ld      (ad_angle),a
+        xor     a
+        ld      (dot_n),a
+        ret
+
 sdr_frame:
         ld      a,c
         ld      (sa_frame),a
