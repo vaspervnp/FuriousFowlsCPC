@@ -108,6 +108,14 @@ STRINGS = [
     ("str_menu",    "SPACE - MENU"),
     ("str_go",      "GO"),
     ("str_space",   "SPACE"),
+    #  The big two-tone banners. At TB_SCALE_BIG a glyph is eighteen
+    #  pixels of pitch, so the window holds nine of them and not one more.
+    ("str_startb",  "START"),
+    ("str_victory", "VICTORY"),
+    ("str_nice",    "NICE TRY"),
+    ("str_nogame",  "NO GAME"),
+    ("str_nodice",  "NO DICE"),
+    ("str_oink",    "OINK OINK"),
     ("str_game",    "GAME"),
     ("str_overb",   "OVER"),
     ("str_easy",    "DOWN - EASY"),

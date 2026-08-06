@@ -260,6 +260,8 @@ GS_CLEAR                equ 3       ; every pig popped
 GS_FAIL                 equ 4       ; out of birds
 GS_TITLE                equ 5       ; the screen it opens on
 GS_OVER                 equ 6       ; goes used up, and that is that
+GS_INTRO                equ 7       ; LEVEL n START, before play begins
+INTRO_FRAMES            equ 100     ; two seconds of it
 
 ;  How many goes a fort allows, chosen at the menu. The count is what the
 ;  difficulty IS: the forts do not change, the number of chances at them

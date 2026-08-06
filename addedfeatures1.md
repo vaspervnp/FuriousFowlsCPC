@@ -471,3 +471,41 @@ of the screen, the same lettering as the title, with SPACE to go back to
 the menu. The camera snaps to the sling first, both because `title_text`
 keeps its x in a single byte and because the fort that beat you is worth
 looking at from the place you were throwing at it.
+
+---
+
+## Big lettering, at both ends of a level
+
+The title's two-tone lettering does duty over the playfield now. `big_line`
+takes a string and a position and lays one line of it down; everything
+below is a caller.
+
+* **LEVEL nn / START**, two seconds before play begins. `GS_INTRO` holds
+  it while the fort settles underneath — which is exactly where a fort
+  built leaning wants to do its settling.
+* **VICTORY** when the last pig goes.
+* **NICE TRY / NO GAME / NO DICE / OINK OINK** when the birds run out and
+  there is still a go left, chosen off the frame counter.
+* **GAME OVER** when there is not.
+
+Widths at `TB_SCALE_BIG`: a glyph is 15 pixels of ink on an 18 pixel
+pitch, so a line of n glyphs is 18n-3 and the 160-pixel window holds nine
+of them and not one more. OINK OINK is exactly nine — 159 pixels, starting
+at x 0, with a single pixel to spare. The x that centres each length is
+worked out once in the comment above `big_line` rather than guessed at
+every call.
+
+**All four banners snap the camera to the sling first.** `title_text`
+keeps its x in a single byte, so the lettering can only be laid down with
+the camera at the left of the world — and the drift that used to happen
+during a banner had to go with it, or the lettering scrolled out from
+under itself.
+
+**The intro erases with a box, not a repaint.** The lettering covers about
+a fifth of the screen and `world_repaint` is the whole of it: four times
+the work to undo a quarter of the damage.
+
+That box takes the AIM DOTS with it, and they are not part of any sprite's
+backing store — so `gu_intro` forgets them (`dot_n = 0`) before asking for
+a redraw. Restoring the table instead would have painted five stale pixels
+over freshly rebuilt scenery.

@@ -54,7 +54,20 @@ game_start_level:
         call    game_next_bird
         call    ui_compose
         call    ui_blit
-        jp      palette_apply
+        call    palette_apply
+;  LEVEL n START, held for two seconds. It goes on AFTER the palette comes
+;  up, because the point of it is to be read — building it behind a black
+;  screen like the rest of the level would waste the first of the two
+;  seconds on a fade the player cannot see through.
+        ld      a,(game_state)
+        cp      GS_AIM
+        ret     nz                  ; out of birds already: no fanfare
+        call    intro_show
+        ld      a,INTRO_FRAMES
+        ld      (banner_t),a
+        ld      a,GS_INTRO
+        ld      (game_state),a
+        ret
 
 ; ----------------------------------------------------------------------------
 ;  world_repaint — rebuild the whole visible window from the model.
@@ -117,18 +130,15 @@ gnb_none:
         ld      a,c                 ; goes taken >= goes allowed?
         cp      b
         ld      a,GS_FAIL
-        jr      c,gnb_state
-;  GAME OVER. Snap back to the sling first: title_text keeps its x in one
-;  byte, so the big lettering can only be laid down with the camera at the
-;  left of the world — and that is where it wants to be anyway, showing
-;  the player the fort that beat them from the place they threw at it.
+        jr      nc,gnb_over
+        ld      (game_state),a      ; ...one of the four consolations
+        ld      a,1
+        call    end_banner
+        ld      a,GS_FAIL
+        jr      gnb_state
+gnb_over:
         call    hi_check            ; the last score there will ever be
-        xor     a
-        ld      (cam_x),a
-        ld      (scroll_dir),a
-        ld      (flip_dir),a
-        call    crtc_set_offset
-        call    world_repaint
+        call    banner_home
         call    over_show
         ld      a,GS_OVER
 gnb_state:
@@ -157,7 +167,32 @@ game_update:
         jp      z,gu_fly
         cp      GS_SETTLE
         jp      z,gu_settle
+        cp      GS_INTRO
+        jp      z,gu_intro
         jp      gu_banner
+
+; ----------------------------------------------------------------------------
+;  INTRO — two seconds of big lettering. The fort settles underneath it,
+;  which is exactly where a fort that was built leaning wants to do it.
+; ----------------------------------------------------------------------------
+gu_intro:
+        call    blocks_update
+        call    pigs_update
+        ld      hl,banner_t
+        dec     (hl)
+        ret     nz
+;  The aim dots live in the band the lettering covered, so the box repaint
+;  took them off the screen — but not out of their table, and putting that
+;  table back would paint five stale pixels over fresh scenery. FORGET
+;  them, then make the next call lay them down again.
+        call    intro_hide
+        xor     a
+        ld      (dot_n),a
+        ld      a,#FF
+        ld      (ad_angle),a
+        ld      a,GS_AIM
+        ld      (game_state),a
+        jp      shot_draw_ready
 
 ; ----------------------------------------------------------------------------
 ;  AIM
@@ -346,6 +381,8 @@ gs_cleared:
         ld      (game_state),a
         ld      a,BANNER_FRAMES
         ld      (banner_t),a
+        xor     a                   ; VICTORY, over the middle of the window
+        call    end_banner
         ld      a,(bird_count)      ; a bird unspent is a bird earned
         ld      c,a
         ld      a,(bird_idx)
@@ -382,6 +419,29 @@ gs_nobonus:
 ;  sixteen, and a score that wraps to nothing is worse than no score.
 ; ============================================================================
 BIRD_BONUS      equ 100
+
+; ----------------------------------------------------------------------------
+;  banner_home — snap the camera to the sling and rebuild the window.
+;
+;  title_text keeps its x in a single BYTE, so the big lettering can only
+;  be laid down with the camera at the left of the world. That is where it
+;  wants to be anyway: the fort that has just come down — or just beaten
+;  you — is worth looking at from the place you were throwing at it.
+; ----------------------------------------------------------------------------
+banner_home:
+        xor     a
+        ld      (cam_x),a
+        ld      (scroll_dir),a
+        ld      (flip_dir),a
+        call    crtc_set_offset
+        jp      world_repaint
+
+; ---- end_banner — A = 0 cleared, 1 failed ---------------------------------
+end_banner:
+        push    af
+        call    banner_home
+        pop     af
+        jp      end_show
 
 ; ---- tries_max — A = how many goes this difficulty allows ------------------
 tries_max:
@@ -477,11 +537,9 @@ gu_banner:
 ;  running to land it. It costs nothing once everything has settled.
         call    blocks_update
         call    pigs_update
-        ld      a,(game_state)      ; GAME OVER has already snapped there,
-        cp      GS_OVER             ; and the big lettering must not be
-        jr      z,gb_held           ; scrolled out from under itself
-        call    camera_follow_sling ; drift back to the sling while it waits
-gb_held:
+;  The camera does NOT drift here any more. All three banners snap it to
+;  the sling themselves and then lay big lettering over the window, and a
+;  drift would scroll that lettering out from under itself.
         ld      a,(banner_t)
         or      a
         jr      z,gb_wait

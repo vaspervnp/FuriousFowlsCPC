@@ -285,6 +285,117 @@ td_go:
         jp      title_text
 
 ; ----------------------------------------------------------------------------
+;  big_line — HL = glyph string, D = x, E = y. One line of the title's own
+;  lettering, dropped over the playfield.
+;
+;  Widths at TB_SCALE_BIG: a glyph is 15 px of ink on an 18 px pitch, so a
+;  line of n glyphs is 18n-3 wide and the window holds nine of them. The
+;  callers below carry the x that centres each one, worked out once here
+;  rather than guessed at each call:
+;
+;      7 glyphs -> 123 px -> x 18      9 glyphs -> 159 px -> x 0
+;      8 glyphs -> 141 px -> x 8       5 glyphs ->  87 px -> x 36
+; ----------------------------------------------------------------------------
+big_line:
+        push    hl
+        push    de
+        ld      a,TB_SCALE_BIG
+        ld      (tb_scale),a
+        ld      a,PEN_YELLOW
+        ld      (tb_pen2),a
+        pop     de
+        pop     hl
+        ld      a,PEN_RED
+        call    title_text
+        ld      a,1
+        ld      (tb_scale),a
+        ret
+
+; ---- num2 — A = 0..99 -> (num2_buf), two digit glyphs and an end marker ---
+num2:
+        ld      e,a
+        ld      d,0
+n2_tens:
+        ld      a,e
+        cp      10
+        jr      c,n2_done
+        sub     10
+        ld      e,a
+        inc     d
+        jr      n2_tens
+n2_done:
+        ld      a,d
+        ld      (num2_buf),a
+        ld      a,e
+        ld      (num2_buf+1),a
+        ret
+
+num2_buf:       ds      2
+                db      GL_END
+
+; ----------------------------------------------------------------------------
+;  intro_show — LEVEL nn / START, held for two seconds before play begins
+; ----------------------------------------------------------------------------
+intro_show:
+        ld      hl,str_level        ; LEVEL is 5 glyphs, the number 2, and
+        ld      de,#0840            ; the gap 1: eight in all -> x 8, y 64
+        call    big_line
+        ld      a,(level_no)
+        inc     a
+        call    num2
+        ld      hl,num2_buf
+        ld      de,#7440            ; x 8 + 6*18 = 116, y 64
+        call    big_line
+        ld      hl,str_startb
+        ld      de,#245E            ; 5 glyphs -> x 36, y 94
+        jp      big_line
+
+; ---- intro_hide — put the world back over the two lines -------------------
+;  A box, not a repaint: the lettering is a fifth of the screen and
+;  world_repaint is the whole of it, four times the work to undo a quarter
+;  of the damage.
+intro_hide:
+        ld      a,(cam_x)
+        ld      (rr_col0),a
+        ld      a,VIEW_CHARS
+        ld      (rr_ncol),a
+        ld      a,64
+        ld      (rr_y0),a
+        ld      a,52
+        ld      (rr_n),a
+        jp      redraw_rect
+
+; ----------------------------------------------------------------------------
+;  end_show — A = 0 the fort came down, else it did not. The big word that
+;  says which, and for a failure one of four ways of saying it — chosen off
+;  the frame counter, which is as random as this machine needs to be.
+; ----------------------------------------------------------------------------
+end_show:
+        or      a
+        jr      nz,es_lost
+        ld      hl,str_victory
+        ld      de,#1246            ; 7 glyphs -> x 18, y 70
+        jp      big_line
+es_lost:
+        ld      a,(frame_counter)
+        and     3
+        ld      hl,str_nice         ; 8 glyphs -> x 8
+        ld      de,#0846
+        or      a
+        jr      z,es_go
+        dec     a
+        ld      hl,str_nogame       ; 7 -> x 18
+        ld      de,#1246
+        jr      z,es_go
+        dec     a
+        ld      hl,str_nodice
+        jr      z,es_go
+        ld      hl,str_oink         ; 9 -> x 0, and not a pixel spare
+        ld      de,#0046
+es_go:
+        jp      big_line
+
+; ----------------------------------------------------------------------------
 ;  over_show — GAME OVER, big and two-tone, over the middle of the window.
 ;
 ;  title_text keeps its x in a single byte, so this can only be drawn with
