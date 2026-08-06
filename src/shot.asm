@@ -449,12 +449,6 @@ du_next:
         ld      (dot_n),a
         ret
 
-; ---- the elastic still uses the shared pair: it is seventy-odd pixels,
-;      not five, and one caller either way.
-band_undo:
-        call    px_use_band
-        jp      px_undo
-
 dot_n:          db      0
 dot_slot:       ds      AIM_DOT_N*3
 pp_addr_last:   dw      0
@@ -681,8 +675,6 @@ sling_band:
         ld      a,(game_state)
         cp      GS_AIM
         ret     nz
-        call    band_undo           ; the old elastic comes off before the
-        call    px_use_band         ; new one is filed away
         ld      a,(mode0_pen_bytes+PEN_BROWN)
         ld      (pp_pen),a
 
@@ -1220,13 +1212,67 @@ se_done:
         ret
 
 se_aim:
-;  Dots, then the bird, then the elastic — the exact reverse of the order
-;  they went on. Each one puts back the pixels it covered, so nothing is
-;  rebuilt: the whole aim used to repaint fifteen columns of scenery every
-;  time the sling moved a notch, and that was the flicker.
+;  THE BIRD HAS MOVED, so the elastic has moved with it, and the elastic is
+;  seventy-odd pixels spread over a box far larger than itself. I gave it a
+;  backing store like the dots' and it was wrong three times running: the
+;  bird is drawn over the band's ends, so the two stores overlap and the
+;  order they are unwound in has to be exactly right at every entry. It was
+;  not, and it left the fork half erased.
+;
+;  So a MOVE rebuilds, the way it always did. The dots come off first by
+;  hand, which is what keeps the rectangle down to the bird and the band
+;  instead of the whole fan of the aim; a blink and a change of angle never
+;  reach here at all. The flicker that is left is one case, not four.
         call    aim_undot
-        call    shot_restore
-        call    band_undo
+        ld      a,(sling_x)         ; left edge: the far grip or the bird
+        sub     SLING_TIP_DL
+        ld      c,a
+        ld      a,(sh_px)
+        cp      c
+        jr      c,se_x0
+        ld      a,c
+se_x0:
+        srl     a
+        srl     a
+        ld      (rr_col0),a
+        ld      c,a
+
+        ld      a,(sling_x)         ; right edge: the near grip or the bird
+        add     a,SLING_TIP_DR
+        ld      b,a
+        ld      a,(sh_px)
+        add     a,CR_WIDTH-1
+        cp      b
+        jr      nc,se_x1
+        ld      a,b
+se_x1:
+        srl     a
+        srl     a
+        sub     c
+        inc     a
+        ld      (rr_ncol),a
+
+        ld      a,(sh_py)           ; top: the bird is always above the grips
+        ld      c,a
+        cp      SLING_TIP_Y
+        jr      c,se_y0
+        ld      c,SLING_TIP_Y
+se_y0:
+        ld      a,c
+        ld      (rr_y0),a
+        ld      b,a
+        ld      a,(sh_py)           ; bottom: ...and always below them
+        add     a,CR_HEIGHT
+        ld      c,a
+        ld      a,SLING_TIP_Y+2
+        cp      c
+        jr      c,se_y1
+        ld      c,a
+se_y1:
+        ld      a,c
+        sub     b
+        ld      (rr_n),a
+        call    redraw_rect
         jr      se_done
 
 ; ============================================================================

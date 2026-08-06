@@ -563,12 +563,10 @@ dl_plot:
         ld      a,(dl_y)
         push    hl
         call    plot_px
-        call    px_keep             ; the elastic keeps what it covers, so
-        pop     hl                  ; erasing it is a byte write per pixel
+        pop     hl
         ld      a,(dl_y)
         inc     a
-        call    plot_px
-        jp      px_keep
+        jp      plot_px
 
 dl_stepy:                           ; preserves A across the y step
         push    af
