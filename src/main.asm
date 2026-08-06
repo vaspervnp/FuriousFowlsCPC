@@ -265,20 +265,22 @@ sp_go:
 ;  underneath a strip that has just been laid on top of it is work with
 ;  nothing to show for it, and this draw is racing the raster.
         call    ui_blit
+
+;  TAKE THE AIM DOTS OFF, do not merely forget them. The rebuild below
+;  touches ONE column and the dotted line spans several: forgetting them
+;  leaves every dot outside that column on the screen with nothing left
+;  that knows how to erase it, which is one ghost of the line per pan.
+;  Restoring puts them all back to background; an impossible angle then
+;  makes the next frame lay the line down again where it now belongs.
+        call    aim_undot
+        ld      a,#FF
+        ld      (ad_angle),a
+
         ld      a,PLAY_TOP
         ld      (rr_y0),a
         ld      a,SCREEN_LINES-PLAY_TOP
         ld      (rr_n),a
         call    redraw_rect
-
-;  The column just rebuilt came from the MODEL, and the aim dots are not in
-;  the model — any that fell in it are gone, while their saved bytes still
-;  claim to describe the background underneath them. An impossible angle
-;  makes the next shot_draw_ready lay the whole aim down again.
-        ld      a,#FF
-        ld      (ad_angle),a
-        xor     a
-        ld      (dot_n),a
         ld      a,(sp_oldcam)       ; the flip has not happened yet
         ld      (cam_x),a
         ld      a,1
