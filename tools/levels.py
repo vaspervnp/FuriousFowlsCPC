@@ -204,16 +204,20 @@ def s_keep(col):
 
 
 def s_derrick(col):
-    """A mast with a pulley at the top and a rope down the side of it
-    carrying two dressed stones. Nothing in this engine swings, so it is
-    not a crane — but the rope snaps for almost nothing and what it is
-    holding up is the heaviest piece in the game, so the shot that cuts it
-    is worth finding."""
+    """A mast, a pulley at the top of it, and a dressed stone hanging on a
+    rope with NOTHING UNDER IT — held up by the rope and by nothing else.
+    The pig stands in the empty two cells below.
+
+    Nothing in this engine swings, so it is not a crane. It does not have
+    to be: the rope snaps for almost nothing, the load is the heaviest
+    piece in the game, and the moment the rope goes the load is in free
+    fall onto whatever is beneath it."""
     return [('i', col, GRID_H - 1), ('i', col, GRID_H - 2),
             ('i', col, GRID_H - 3), ('i', col, GRID_H - 4),
-            ('o', col + 1, GRID_H - 5),
-            ('|', col + 1, GRID_H - 4), ('|', col + 1, GRID_H - 3),
-            ('S', col + 1, GRID_H - 2), ('S', col + 1, GRID_H - 1)]
+            ('i', col, GRID_H - 5), ('i', col, GRID_H - 6),
+            ('o', col + 1, GRID_H - 6),
+            ('|', col + 1, GRID_H - 5), ('|', col + 1, GRID_H - 4),
+            ('S', col + 1, GRID_H - 3)]
 
 
 def s_citadel(col):
@@ -248,8 +252,12 @@ def s_deadfall(col):
     return [('i', col, GRID_H - 1), ('i', col, GRID_H - 2),
             ('i', col + 3, GRID_H - 1), ('i', col + 3, GRID_H - 2),
             ('i', col, GRID_H - 3), ('i', col + 3, GRID_H - 3),
-            ('-', col, GRID_H - 4), ('-', col + 1, GRID_H - 4),
-            ('-', col + 2, GRID_H - 4), ('-', col + 3, GRID_H - 4),
+            ('i', col, GRID_H - 4), ('i', col + 3, GRID_H - 4),
+            #  STRUNG BETWEEN the posts, not resting on them: each end of
+            #  the rope is butted against a post, which is what ties it.
+            #  Knock either post out and the whole rope comes down at once,
+            #  because a rope has no stiffness to pivot on.
+            ('-', col + 1, GRID_H - 4), ('-', col + 2, GRID_H - 4),
             ('S', col + 1, GRID_H - 5), ('S', col + 2, GRID_H - 5)]
 
 
@@ -287,7 +295,7 @@ def default_level(n):
         blocks += SHAPES[(shape + 3) % 8](ZONE_OUT, max(0, grade - 2))
         pigs += [('p', ZONE_OUT + 1, GRID_H - 1)]
     if grade >= 4:
-        annex, pcol = ((s_derrick, 3), (s_deadfall, 1),
+        annex, pcol = ((s_derrick, 1), (s_deadfall, 1),
                        (s_hut, 1))[shape % 3]
         blocks += annex(ZONE_ANNEX)
         pigs += [('p', ZONE_ANNEX + pcol, GRID_H - 1)]

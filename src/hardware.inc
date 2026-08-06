@@ -176,6 +176,12 @@ BLK_TILT                equ 9       ; 0 upright, else a rot_slope index
 BLK_TIPT                equ 10      ; frames until the next tilt step
 BLK_SHOVE               equ 11      ; #FF / 1: which side it was pushed from
 BLK_FELL                equ 12      ; 1 = it has actually changed row
+BLK_HANG                equ 13      ; 1 = it is held by a ROPE above it, and
+                                    ; therefore cannot hold anything else up.
+                                    ; Without this a rope rests on the load
+                                    ; that is hanging from the rope, and the
+                                    ; two of them float in mid-air holding
+                                    ; each other.
 
 BS_FREE                 equ 0
 BS_REST                 equ 1

@@ -67,7 +67,8 @@ PIG_COUNT = len(PIGS)
 # ---------------------------------------------------------------------------
 #  `tall` marks the UPRIGHTS. A piece standing on end does not just get
 #  dislodged when something shoves it — it goes over, which is why they
-#  have to be told apart from the things that merely sit there.
+#  have to be told apart from the things that merely sit there. A vertical
+#  ROPE is not one of them: it has no stiffness to topple with.
 BLOCK_PIECES = [
     # name        hp   tall   what it is
     ('beam_h',    30,  False),  # 0  horizontal plank, floor and lintel
@@ -83,7 +84,7 @@ BLOCK_PIECES = [
     #  Six more, and that is the lot: the level format packs the piece into
     #  FOUR BITS, so sixteen is the ceiling and this is it.
     ('rope_h',     8,  False),  # 10 rope strung across a gap
-    ('rope_v',     8,  True),   # 11 ...and hanging down one
+    ('rope_v',     8,  False),  # 11 ...and hanging down one
     ('pulley',    22,  False),  # 12 a wheel on a bracket, with rope over it
     ('tnt',       10,  False),  # 13 explosive crate — see tnt_blast
     ('glass',      6,  False),  # 14 a pane. The most fragile thing here

@@ -197,6 +197,7 @@ block_add:
         ld      (ix+BLK_TILT),TILT_NONE
         ld      (ix+BLK_TIPT),0
         ld      (ix+BLK_SHOVE),0
+        ld      (ix+BLK_HANG),0
         ld      a,(ba_len)
         or      a
         jr      nz,ba_len_ok
@@ -1666,45 +1667,246 @@ sbc_loop:
         ret
 
 ; ---- block_support — IX = block -> A = SUP_* -------------------------------
-;  A single cell is held by the ground, by what is under it, or by being
-;  WEDGED between two neighbours — that last rule is what lets a stack stand
-;  when its own footing is gone. A BEAM is judged at its ends: both held is
-;  stable, one held tips over that end, neither is a free fall. A shove from
-;  a bird sliding across the fort decides the direction when both ends are
-;  equally loose.
+;  A single cell is held by the ground, by what is under it, by HANGING from
+;  a rope, or by being WEDGED between two neighbours — that last rule is what
+;  lets a stack stand when its own footing is gone. A BEAM is judged at its
+;  ends: both held is stable, one held tips over that end, neither is a free
+;  fall. A shove from a bird sliding across the fort decides the direction
+;  when both ends are equally loose.
+;
+;  ROPE IS NOT JUDGED THAT WAY AT ALL. See bsup_rope.
 ; ----------------------------------------------------------------------------
 block_support:
+        ld      (ix+BLK_HANG),0     ; re-decided from scratch every sweep
+        ld      a,(ix+BLK_PIECE)
+        cp      BLK_ROPE_H
+        jp      z,bsup_rope_h
+        cp      BLK_ROPE_V
+        jp      z,bsup_rope_v
         ld      a,(ix+BLK_LEN)
         cp      2
-        jr      nc,bsup_beam
+        jp      nc,bsup_beam
 
         call    span_below_clear    ; --- a single cell
         jr      nz,bsup_stable
         ld      a,(ix+BLK_COL)
         or      a
-        jr      z,bsup_fall
+        jr      z,bsup_hang
         dec     a
         ld      b,a
         ld      c,(ix+BLK_ROW)
         call    cell_free
-        jr      z,bsup_fall
+        jr      z,bsup_hang
         ld      a,(ix+BLK_COL)
         inc     a
         cp      GRID_W
-        jr      nc,bsup_fall
+        jr      nc,bsup_hang
         ld      b,a
         ld      c,(ix+BLK_ROW)
         call    cell_free
-        jr      z,bsup_fall
+        jr      z,bsup_hang
         ld      a,(ix+BLK_SHOVE)    ; wedged, but something shoved it: a
         or      a                   ; piece held only by its neighbours does
-        jr      nz,bsup_fall        ; not survive being dragged sideways
+        jr      nz,bsup_hang        ; not survive being dragged sideways
 bsup_stable:
         ld      a,SUP_STABLE
         ret
 bsup_fall:
         ld      a,SUP_FALL
         ret
+
+; ============================================================================
+;  Rope
+;
+;  Everything else in this engine is held from BELOW. A rope is not: it
+;  carries tension and nothing else, so it is held by its anchors, whatever
+;  is under it hangs FROM it, and it never tips — a rope has no stiffness to
+;  tip with. It is either taut or it is on the floor.
+;
+;  "Below" still counts as an anchor, and that is not a fudge: a rope lying
+;  on the ground IS anchored, and without the rule it would fall zero cells,
+;  be judged unsupported again next sweep, and fall zero cells for ever —
+;  the settle would never end and the turn would never finish.
+; ============================================================================
+
+; ---- bsup_hang — a cell with a ROPE directly above it hangs from it --------
+;  This is the whole point of a rope. Nothing under the load, nothing beside
+;  it, and it still stands — until the rope is cut, and then it drops in the
+;  same frame the rope does.
+; ----------------------------------------------------------------------------
+bsup_hang:
+        ld      a,(ix+BLK_ROW)
+        or      a
+        jr      z,bsup_fall         ; the top row: nothing above to hang from
+        dec     a
+        ld      c,a
+        ld      b,(ix+BLK_COL)
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        jr      z,bsup_fall
+        bit     7,a
+        jr      nz,bsup_fall        ; a pig overhead is not a rope
+        ld      e,a
+        push    ix
+        call    block_ptr
+        ld      a,(ix+BLK_STATE)    ; a rope on its way down carries nothing
+        cp      BS_REST
+        jr      nz,bsh_no
+        ld      a,(ix+BLK_PIECE)
+        pop     ix
+        cp      BLK_ROPE_H
+        jr      z,bsh_yes
+        cp      BLK_ROPE_V
+        jr      z,bsh_yes
+        jr      bsup_fall
+bsh_no:
+        pop     ix
+        jr      bsup_fall
+bsh_yes:
+        ld      (ix+BLK_HANG),1     ; ...and it can hold nothing else up
+        jp      bsup_stable
+
+; ---- rope_tied — B = column, C = row. NZ if that cell can tie a rope from
+;      ABOVE: something is there, and it is not itself on its way down.
+;  An anchor that is falling is not an anchor. Without that clause the top
+;  cell of a cut rope hangs from the cell above it, the cell below hangs
+;  from the top cell, and a rope with nothing whatever holding it up never
+;  comes down.
+; ----------------------------------------------------------------------------
+rope_tied:
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        ret     z
+        bit     7,a
+        jr      nz,rt_yes           ; a pig is as good an anchor as any
+        ld      e,a
+        push    ix
+        call    block_ptr
+        ld      a,(ix+BLK_STATE)
+        pop     ix
+        cp      BS_REST
+        jr      z,rt_yes
+        xor     a
+        ret
+rt_yes:
+        or      #FF
+        ret
+
+; ---- rope_hold — B = column, C = row. NZ if that cell can hold a rope UP.
+;  The floor of the world can. A block can — unless it is itself held from
+;  above, and that exclusion is the whole reason this routine exists.
+;  Without it a rope rests on the load that is hanging from the rope, the
+;  two of them prop each other up in mid-air, and cutting the rope changes
+;  nothing. The sweep runs bottom row first, so the cell below has already
+;  had its flag decided this frame.
+; ----------------------------------------------------------------------------
+rope_hold:
+        ld      a,c
+        cp      GRID_H
+        jr      nc,rh_yes           ; the floor of the world
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        ret     z
+        bit     7,a
+        jr      nz,rh_yes           ; a pig will do
+        ld      e,a
+        push    ix
+        call    block_ptr
+        ld      a,(ix+BLK_HANG)
+        or      a
+        jr      nz,rh_no            ; it is held from ABOVE, so it is holding
+        pop     ix                  ; nothing up itself
+rh_yes:
+        or      #FF
+        ret
+rh_no:
+        pop     ix
+        xor     a
+        ret
+
+; ---- bsup_rope_v — tied above, or standing on something that can take it --
+bsup_rope_v:
+        ld      a,(ix+BLK_ROW)
+        or      a
+        jr      z,brv_below         ; the top row has nothing above it
+        dec     a
+        ld      c,a
+        ld      b,(ix+BLK_COL)
+        call    rope_tied
+        jr      z,brv_below
+        ld      (ix+BLK_HANG),1     ; tied from above — and so holding
+        jp      bsup_stable         ; nothing up itself
+brv_below:
+        ld      a,(ix+BLK_ROW)
+        inc     a
+        ld      c,a
+        ld      b,(ix+BLK_COL)
+        call    rope_hold
+        jp      nz,bsup_stable
+        jp      bsup_fall
+
+; ---- bsup_rope_h — BOTH ends have to be tied, and it drops if either is not
+;  Not tips: drops. One end of a plank letting go pivots on the other,
+;  because a plank is rigid. A rope is not, so it comes down whole.
+; ----------------------------------------------------------------------------
+bsup_rope_h:
+        ld      a,(ix+BLK_COL)      ; the left end, and the cell outside it
+        ld      b,a
+        dec     a
+        call    bsup_tie
+        jp      z,bsup_fall
+        ld      a,(ix+BLK_COL)      ; ...then the right
+        add     a,(ix+BLK_LEN)
+        dec     a
+        ld      b,a
+        inc     a
+        call    bsup_tie
+        jp      z,bsup_fall
+        jp      bsup_stable
+
+; ---- bsup_tie — B = an end column of the rope, A = the cell just outside it.
+;      NZ if that end is tied to anything: above it, beside it, or under it.
+; ----------------------------------------------------------------------------
+bsup_tie:
+        ld      (bst_out),a
+        ld      a,b
+        ld      (bst_end),a
+        ld      a,(ix+BLK_ROW)
+        or      a
+        jr      z,bst_side          ; the top row has no cell above it
+        dec     a
+        ld      c,a
+        push    bc
+        call    rope_tied
+        pop     bc
+        jr      z,bst_side
+        ld      (ix+BLK_HANG),1     ; tied from above
+        ret                         ; (NZ from rope_tied)
+bst_side:
+        ld      a,(bst_out)
+        cp      GRID_W
+        jr      nc,bst_wall         ; off the edge: the world is an anchor
+        ld      b,a
+        ld      c,(ix+BLK_ROW)
+        push    bc
+        call    cell_free
+        pop     bc
+        ret     nz                  ; butted against a post or a wall
+        ld      a,(ix+BLK_ROW)      ; ...or simply resting on something that
+        inc     a                   ; can take the weight — THIS end of it,
+        ld      c,a                 ; not the left end of the whole rope
+        ld      a,(bst_end)
+        ld      b,a
+        jp      rope_hold
+bst_wall:
+        or      #FF
+        ret
+
+bst_out:        db      0
+bst_end:        db      0
 
 bsup_beam:                          ; --- a beam: judge it at the ends
         ld      b,(ix+BLK_COL)
@@ -1737,16 +1939,16 @@ bsup_r_done:
         ld      a,c
         or      a
         jr      z,bsup_tipr         ; left only: the right end drops
-        jr      bsup_stable         ; both ends: it stands
+        jp      bsup_stable         ; both ends: it stands
 bsup_noleft:
         ld      a,c
         or      a
         jr      nz,bsup_tipl        ; right only: the left end drops
         call    span_below_clear    ; neither end, but is the middle held?
-        jr      z,bsup_fall
+        jp      z,bsup_fall
         ld      a,(ix+BLK_SHOVE)    ; balanced on its middle — then which way
         or      a                   ; it goes is decided by whatever pushed
-        jr      z,bsup_stable       ; it, which is exactly a bird sliding
+        jp      z,bsup_stable       ; it, which is exactly a bird sliding
         bit     7,a                 ; across the top of the fort
         jr      nz,bsup_tipl
         jr      bsup_tipr

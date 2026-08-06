@@ -314,3 +314,49 @@ measurement tool in this project to blame the game for its own bug.** The
 rule that keeps earning its keep: before believing a tool that says
 "nothing happened", make it say "something happened" on a case where
 something demonstrably did.
+
+---
+
+## Rope physics
+
+A rope was a beam with almost no hit points. Now it is a rope.
+
+**It carries tension and nothing else.** Everything else in this engine is
+held from below; a rope is held by its anchors, whatever is under it hangs
+FROM it, and it never tips — a rope has no stiffness to tip with, so it is
+either taut or it is on the floor. `rope_v` lost its `tall` flag for the
+same reason.
+
+* `rope_v` — tied by the cell above, or standing on something that can
+  take the weight.
+* `rope_h` — BOTH ends have to be tied, to the cell above, beside or under
+  each end, or the edge of the world. If either lets go the whole rope
+  **drops**, it does not tip: one end of a plank letting go pivots on the
+  other because a plank is rigid, and a rope is not.
+* `bsup_hang` — a cell with a rope directly above it is held BY the rope,
+  with nothing under it and nothing beside it. This is the whole point.
+
+### Two circular supports, and what broke them
+
+The rule "a rope may rest on what is below it" is needed, or a rope lying
+on the ground falls zero cells, is judged unsupported next sweep, and
+falls zero cells for ever. But it creates cycles:
+
+1. **The rope rests on the load that is hanging from the rope.** Both float
+   in mid-air propping each other up, and cutting the rope changes nothing.
+   Broken by `BLK_HANG`: a block that got its support from ABOVE is marked,
+   and `rope_hold` refuses to be held up by a marked block. The sweep runs
+   bottom row first, so the cell below has already had its flag decided
+   this frame.
+2. **The top of a cut rope hangs from the cell above it, and the cell below
+   hangs from the top.** Broken by `rope_tied`: an anchor that is itself
+   falling is not an anchor.
+
+Without the second, the cut rope sat in `BS_FALL` for ever and the settle
+never ended. Without the first, the load never fell at all.
+
+Verified by construction rather than by aim, which is the lesson from the
+TNT: build the rig with its anchor MISSING and check that the load ends on
+the ground, then build it with the anchor and check that nothing moves in
+four hundred frames, then cut it with a bird and check the stone lands on
+the pig. All three pass.
