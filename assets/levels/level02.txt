@@ -1,12 +1,14 @@
 # FORT 02 — edit freely, then run make.
 # grid is 20x10 cells of 16 px; the last map line sits on the ground.
 name    FORT 02
-set     twig
+set     ice
 sling   24
 birds   red yellow red
 scenery cloud_a 16 10 ; cloud_b 188 26 ; tree_b 248 40 ; bush_a 88 104
 map
-............../\....
-.............hhhh...
-.........x...i..i...
-.Y.......xp..ip.i...
+............../.\...
+.............hhhhh..
+..............i.i...
+.............hhhhh..
+.............i.i.i..
+.Y...........ipipi..

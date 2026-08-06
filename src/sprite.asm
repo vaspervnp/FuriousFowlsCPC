@@ -117,6 +117,20 @@ pen_byte:                           ; A = pen -> A = both-pixel Mode 0 byte
 ;  are untouched.
 ; ============================================================================
 spr_blit:
+        call    spr_clip
+        ret     c
+        jp      sb_rows_go
+
+; ============================================================================
+;  spr_clip — work out what of the sprite actually lands on screen.
+;
+;  Sets sb_src, sb_rows, sb_y, sb_byte0, sb_i0 and sb_nblit, and returns
+;  with CARRY SET if there is nothing to draw. Split out from the blit so
+;  that saving and restoring the pixels underneath a sprite can work on
+;  exactly the same rectangle the blit will touch — a backing store that
+;  disagreed with the blit by one byte would be worse than none.
+; ============================================================================
+spr_clip:
         ld      hl,(sp_art)
         ld      (sb_src),hl
         ld      a,(sp_h)
@@ -128,10 +142,10 @@ spr_blit:
         jr      nz,sb_above
         ld      a,h
         or      a
-        ret     nz                  ; y >= 256: below the world
+        jp      nz,sc_none          ; y >= 256: below the world
         ld      a,l
         cp      SCREEN_LINES
-        ret     nc
+        jp      nc,sc_none
         cp      PLAY_TOP
         jr      nc,sb_ytop_ok
 sb_above:
@@ -142,14 +156,14 @@ sb_above:
         sbc     hl,de               ; HL = PLAY_TOP - y
         ld      a,h
         or      a
-        ret     nz                  ; more than 255 rows above: forget it
+        jp      nz,sc_none          ; more than 255 rows above: forget it
         ld      a,l
         ld      b,a
         ld      c,a
         ld      a,(sb_rows)
         sub     c
-        ret     c
-        ret     z
+        jp      c,sc_none
+        jp      z,sc_none
         ld      (sb_rows),a
         ld      a,(sp_w)            ; art += skipped * bytes-per-row
         ld      e,a
@@ -174,8 +188,8 @@ sb_ystore:
 sb_ybot:
         ld      a,SCREEN_LINES
         sub     c
-        ret     z
-        ret     c
+        jp      z,sc_none
+        jp      c,sc_none
         ld      (sb_rows),a
 sb_yok:
 
@@ -205,13 +219,13 @@ sb_yok:
 sb_i0_pos:
         ld      a,h
         or      a
-        ret     nz                  ; more than 255 bytes off to the left
+        jp      nz,sc_none          ; more than 255 bytes off to the left
         ld      a,l
         ld      c,a
         ld      a,(sb_nb)
         cp      c
-        ret     c                   ; nothing of it reaches the window
-        ret     z
+        jp      c,sc_none           ; nothing of it reaches the window
+        jp      z,sc_none
         ld      a,c
         ld      (sb_i0),a
 
@@ -221,7 +235,7 @@ sb_i0_pos:
         ld      de,(sb_bx)
         or      a
         sbc     hl,de
-        ret     m                   ; it starts right of the window
+        jp      m,sc_none           ; it starts right of the window
         ld      a,h
         or      a
         ld      a,l
@@ -237,7 +251,7 @@ sb_i1_small:
 sb_i1_ok:
         ld      hl,sb_i0            ; nblit = i1 - i0 + 1
         sub     (hl)
-        ret     c
+        jp      c,sc_none
         inc     a
         ld      (sb_nblit),a
 
@@ -248,6 +262,12 @@ sb_i1_ok:
         add     hl,de
         ld      a,l
         ld      (sb_byte0),a
+        or      a                   ; CF = 0: there is something to draw
+        ret
+
+sc_none:
+        scf
+        ret
 
 ; ---- and now the rows ------------------------------------------------------
 sb_rows_go:

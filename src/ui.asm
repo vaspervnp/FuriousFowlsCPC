@@ -36,7 +36,15 @@ ui_compose:
         ld      b,PEN_YELLOW
         call    ui_num2
 
-        ld      hl,str_birds        ; BIRDS n
+;  The two counters keep their positions and swap their LABELS: in the
+;  reversed mode the thing in the pouch is a pig and the thing in the way
+;  is a bird, and a strip that says otherwise is just wrong.
+        ld      hl,str_birds        ; what is left to throw
+        ld      a,(swap_mode)
+        or      a
+        jr      z,uc_lbl1
+        ld      hl,str_pigs
+uc_lbl1:
         ld      c,54
         ld      b,PEN_WHITE
         call    ui_text
@@ -53,12 +61,18 @@ uc_birds:
         ld      b,PEN_YELLOW
         call    ui_num1
 
-        ld      hl,str_pigs         ; PIGS n
+        ld      hl,str_pigs         ; ...and what is still standing
+        ld      a,(swap_mode)
+        or      a
+        jr      z,uc_lbl2
+        ld      hl,str_birds
+uc_lbl2:
         ld      c,104
         ld      b,PEN_WHITE
         call    ui_text
         ld      a,(pigs_alive)
-        ld      c,134
+        ld      c,136               ; BIRDS is a glyph longer than PIGS; this
+                                    ; sits clear of either
         ld      b,PEN_GREEN
         jp      ui_num1
 
@@ -133,7 +147,21 @@ ui_num1:
         ret
 
 ; ----------------------------------------------------------------------------
-;  ui_glyph — A = glyph index, C = x, B = pen. Draws 5x7 into hud_buf.
+;  ui_glyph — A = glyph index, C = x (always even), B = pen.
+;
+;  A glyph row is five pixels and every glyph starts on an even one, so in
+;  Mode 0 it is exactly THREE WHOLE BYTES. That is the whole trick. The
+;  strip used to be plotted a pixel at a time, and each pixel recomputed
+;  y*80 + x/2 from scratch and then read-modify-wrote a nibble — about a
+;  hundred and fifty T-states to set four bits, twenty-four characters of
+;  it, three display frames for a status line that usually says exactly
+;  what it said before.
+;
+;  Now the four possible pixel PAIRS are worked out once per glyph, already
+;  in the right pen, and a row is three lookups and three stores with
+;  nothing to compute. The bar is cleared to black first, so there is
+;  nothing underneath to preserve: the byte IS the pen masked by the pixels
+;  the glyph lights.
 ; ----------------------------------------------------------------------------
 ui_glyph:
         ld      l,a
@@ -147,107 +175,88 @@ ui_glyph:
         add     hl,de               ; index * 7
         ld      de,font5x7
         add     hl,de
-        ld      a,FONT_H
-        ld      (ug_rows),a
-        xor     a
-        ld      (ug_y),a
-ug_row:
-        ld      a,(hl)
-        ld      (ug_bits),a
         push    hl
-        ld      a,c
-        ld      (ug_x),a
-        ld      d,FONT_W
-ug_col:
-        ld      a,(ug_bits)
-        add     a,a                 ; bit 4 is the leftmost pixel, so shift
-        ld      (ug_bits),a         ; it up into bit 7 three times over
-        add     a,a
-        add     a,a
-        add     a,a
-        jr      nc,ug_skip
-        push    de
-        push    bc
-        call    ui_px
-        pop     bc
-        pop     de
-ug_skip:
-        ld      a,(ug_x)
-        inc     a
-        ld      (ug_x),a
-        dec     d
-        jr      nz,ug_col
-        pop     hl
-        inc     hl
-        ld      a,(ug_y)
-        inc     a
-        ld      (ug_y),a
-        ld      a,(ug_rows)
-        dec     a
-        ld      (ug_rows),a
-        jr      nz,ug_row
-        ret
+        pop     ix                  ; IX = this glyph's seven rows
 
-; ----------------------------------------------------------------------------
-;  ui_px — plot (ug_x, ug_y) in pen B, straight into Mode 0.
-;
-;  The strip used to be composed in art form and converted afterwards,
-;  which cost a second 640-byte buffer. Plotting a Mode 0 pixel is only a
-;  mask and an OR, so the conversion — and the buffer — are gone.
-; ----------------------------------------------------------------------------
-ui_px:
-        ld      a,(ug_x)
-        cp      VIEW_CHARS*4
-        ret     nc
-        ld      a,(ug_y)            ; hud_buf + y * HUD_STRIDE + x / 2
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; y * 16
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,hl               ; y * 64
-        add     hl,de               ; y * 80
-        ld      a,(ug_x)
-        srl     a
+        ld      a,c                 ; hud_buf + x/2, while C is still the x
+        srl     a                   ; we were handed
         ld      e,a
         ld      d,0
+        ld      hl,hud_buf
         add     hl,de
-        ld      de,hud_buf
-        add     hl,de
+        ex      de,hl               ; DE = where the top row goes
 
-        ld      a,b                 ; the pen as a both-pixel Mode 0 byte
-        ld      de,mode0_pen_bytes
-        add     a,e
-        ld      e,a
-        adc     a,d
-        sub     e
-        ld      d,a
-        ld      a,(de)
-        ld      c,a
-        ld      a,(ug_x)
-        bit     0,a
-        jr      nz,up_right
-        ld      a,c                 ; left pixel: bits 7,3,5,1
-        and     #AA
-        ld      c,a
-        ld      a,(hl)
-        and     #55
-        or      c
-        ld      (hl),a
-        ret
-up_right:
+;  The four possible pixel PAIRS. Writing whole bytes means writing the
+;  glyph's BLANK pixels too, so a blank has to be the colour the bar was
+;  cleared to — not zero. Zero is the sky pen, and it painted a rectangle
+;  of it around every character.
+        ld      a,b                 ; the pen, as a both-pixel Mode 0 byte
+        ld      hl,mode0_pen_bytes
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      c,(hl)              ; C = the pen
+        ld      a,(mode0_pen_bytes+PEN_BLACK)
+        ld      (ug_tab+0),a        ; neither pixel lit: leave the bar alone
+        ld      b,a
+        and     #AA                 ; left half of the background...
+        ld      l,a
         ld      a,c
+        and     #55                 ; ...and the pen in the right pixel
+        or      l
+        ld      (ug_tab+1),a
+        ld      a,b
         and     #55
-        ld      c,a
-        ld      a,(hl)
+        ld      l,a
+        ld      a,c
         and     #AA
-        or      c
-        ld      (hl),a
+        or      l
+        ld      (ug_tab+2),a        ; left pixel only
+        ld      a,c
+        ld      (ug_tab+3),a        ; both
+        ld      b,FONT_H
+ug_row:
+        ld      a,(ix+0)            ; five pixels, bit 4 leftmost
+        inc     ix
+        ld      c,a
+        rrca
+        rrca
+        rrca
+        and     3                   ; pixels 0 and 1
+        ld      hl,ug_tab
+        add     a,l
+        ld      l,a
+        ld      a,(hl)
+        ld      (de),a
+        inc     de
+        ld      a,c
+        rrca
+        and     3                   ; pixels 2 and 3
+        ld      hl,ug_tab
+        add     a,l
+        ld      l,a
+        ld      a,(hl)
+        ld      (de),a
+        inc     de
+        ld      a,c
+        and     1
+        add     a,a                 ; pixel 4, and the gap beside it
+        ld      hl,ug_tab
+        add     a,l
+        ld      l,a
+        ld      a,(hl)
+        ld      (de),a
+        ld      hl,HUD_STRIDE-2     ; ...and on to the next scanline
+        add     hl,de
+        ex      de,hl
+        djnz    ug_row
         ret
+
+        align   4                   ; so ug_tab+3 cannot cross a page and
+ug_tab: ds      4                   ; the index can be a plain ADD to L
+
         assert  HUD_STRIDE == 80
 
 ; ============================================================================

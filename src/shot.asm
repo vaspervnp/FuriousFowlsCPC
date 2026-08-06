@@ -84,12 +84,19 @@ shot_draw_ready:
         ld      a,(aim_power)
         or      a
         jr      nz,sdr_frame
-        ld      c,FR_IDLE           ; slack sling: it is only waiting
+        ld      c,FR_IDLE           ; slack sling: it is only waiting...
+        ld      a,(frame_counter)   ; ...and a bird that is waiting blinks,
+        and     127                 ; the same as the ones on the title
+        cp      5
+        jr      nc,sdr_frame
+        ld      c,FR_BLINK
 sdr_frame:
         ld      a,c
         ld      (sa_frame),a
         call    shot_aim_pos
 
+        xor     a
+        ld      (se_narrow),a
         ld      a,(sh_drawn)
         or      a
         jr      z,sdr_redraw        ; nothing on screen yet
@@ -103,11 +110,47 @@ sdr_frame:
         or      a
         sbc     hl,de
         jr      nz,sdr_redraw
+;  The aim dots depend on the ANGLE, which at zero pull moves neither the
+;  bird nor its pose. Leaving that out of this test is what made up and
+;  down look dead in the first place.
+;  ONLY THE AIM MOVED. Five pixels changed, and five pixels is five byte
+;  writes — not a rebuild of the scenery under the whole aim rectangle,
+;  which is what made changing the angle flicker.
+        ld      a,(aim_angle)
+        ld      hl,ad_angle
+        cp      (hl)
+        jr      nz,sdr_aim_only
+;  Only the POSE left. A blink moves nothing — not the bird, not the
+;  elastic, not the dots — so erasing the whole aim rectangle for it costs
+;  seven times what it needs to and leaves the bird off the screen for most
+;  of the blink. Narrow the erase to the bird's own box.
         ld      a,(sa_frame)
         ld      hl,sh_frame
         cp      (hl)
-        ret     z                   ; same place, same pose: nothing to do
+        ret     z                   ; same place, same pose, same aim
+        ld      a,1
+        ld      (se_narrow),a
+        jr      sdr_redraw
+
+sdr_aim_only:
+        ld      a,(aim_angle)
+        ld      (ad_angle),a
+        call    aim_undot           ; put back exactly what the old dots
+        jp      aim_dots            ; covered, then draw the new five
+
 sdr_redraw:
+        ld      a,(aim_angle)
+        ld      (ad_angle),a
+;  Lift the dots BEFORE the erase, so what aim_dots files away afterwards
+;  is background and not a dot it drew itself.
+        call    aim_undot
+        ld      a,(aim_power)       ; a creak per notch of the pull, and only
+        or      a                   ; while it IS a pull: this same path also
+        jr      z,sdr_go            ; runs for a change of aim and for putting
+        ld      a,SND_STRETCH       ; the next bird in the pouch
+        ld      b,0
+        call    snd_fx
+sdr_go:
         call    shot_erase
         ld      hl,(sa_x)
         ld      (sh_px),hl
@@ -115,8 +158,16 @@ sdr_redraw:
         ld      (sh_py),hl
         ld      a,(sa_frame)
         ld      (sh_frame),a
+;  A BLINK changes the bird and nothing else. The elastic and the aim dots
+;  are exactly where they were, and redrawing them means erasing seventy-odd
+;  pixels and putting them straight back — which is the flicker you see on
+;  the rope while the eyes close.
+        ld      a,(se_narrow)
+        or      a
+        jp      nz,shot_draw
         call    sling_band          ; the elastic, then the bird over its ends
-        jp      shot_draw
+        call    shot_draw
+        jp      aim_dots
 
 ; ----------------------------------------------------------------------------
 ;  shot_draw_rect — the bird is furniture too, as far as an erase is
@@ -135,12 +186,200 @@ shot_draw_rect:
         ld      a,(sdr_skip)
         or      a
         ret     nz
+        call    shot_in_rect
+        ret     c
+        call    sling_band          ; and its elastic, if it is on the sling
+        call    shot_draw
+        jp      aim_dots
+
+; ----------------------------------------------------------------------------
+;  aim_dots — five dots, four pixels apart, along the line the bird will
+;  leave on: twenty pixels of it, broken, so it reads as an aim and not as
+;  another piece of the slingshot.
+;
+;  Without this, UP and DOWN move a number with no consequence on screen.
+;  The bird's resting place is pull * cos(angle), so at zero pull every
+;  angle puts it in exactly the same pixel and the aim looks broken even
+;  though it is working.
+; ----------------------------------------------------------------------------
+AIM_DOT_N       equ 5
+AIM_DOT_STEP    equ 6
+;  Far enough out that every dot MOVES. AIM_RATE is one 256th of a turn,
+;  about 1.4 degrees, and a dot sixteen pixels from the pivot shifts four
+;  tenths of a pixel for that — so the innermost one sat still through four
+;  presses in a row and read as something left behind rather than as an
+;  aim. At twenty-six pixels and out, they all travel.
+AIM_DOT_START   equ 26
+
+aim_dots:
+        ld      a,(game_state)
+        cp      GS_AIM
+        ret     nz
+        call    aim_undot           ; TAKE THE OLD FIVE OFF FIRST. This is
+                                    ; also reached from the restack, where
+                                    ; nothing has undotted for us — and
+                                    ; recording a dot as its own background
+                                    ; means the next erase paints it back.
+        call    px_use_dots
+        ld      a,(mode0_pen_bytes+PEN_WHITE)
+        ld      (pp_pen),a
+        ld      a,AIM_DOT_START
+        ld      (ad_d),a
+ad_loop:
+        ld      a,(aim_angle)
+        call    cos256
+        ld      b,a
+        ld      a,(ad_d)
+        call    mul_s8
+        call    div128              ; A = the x offset, signed
+        ld      e,a
+        ld      d,0
+        bit     7,a
+        jr      z,ad_dx
+        dec     d
+ad_dx:
+        ld      hl,(sh_px)
+        add     hl,de
+        ld      de,CR_WIDTH/2       ; from the middle of the bird
+        add     hl,de
+        push    hl
+        ld      a,(aim_angle)
+        call    sin256
+        ld      b,a
+        ld      a,(ad_d)
+        call    mul_s8
+        call    div128
+        ld      b,a
+        ld      a,(sh_py)
+        add     a,CR_HEIGHT/2
+        sub     b                   ; screen y grows downward
+        pop     hl
+        call    plot_px
+        call    px_keep
+        ld      a,(ad_d)
+        add     a,AIM_DOT_STEP
+        ld      (ad_d),a
+        cp      AIM_DOT_START+AIM_DOT_STEP*AIM_DOT_N
+        jr      c,ad_loop
+        ret
+
+; ---- px_keep / px_undo — a scatter of single pixels, kept and put back ----
+;  The aim dots and the elastic are the same problem: a handful of pixels
+;  spread over a box far bigger than they are, which the erase-by-rebuild
+;  path has to reconstruct in full. Keeping the byte each one covered turns
+;  the erase into one write per pixel. (px_base) says which table is being
+;  filled, so the two share every line of this.
+;
+;  plot_px writes nothing when a pixel is clipped, and then pp_addr still
+;  holds the last one it DID write — hence the compare, rather than trusting
+;  that a call means a pixel.
+px_keep:
+        ld      hl,(pp_addr)
+        ld      a,h
+        or      l
+        ret     z                   ; plot_px clipped it: nothing to keep
+        ld      hl,0
+        ld      (pp_addr),hl
+        ld      hl,(px_n)
+        ld      a,(px_max)
+        cp      (hl)
+        ret     z                   ; the table is full: better to leave a
+        ld      b,(hl)              ; pixel than to run off the end of it
+        inc     (hl)
+        ld      l,b
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,de               ; index * 3
+        ld      de,(px_base)
+        add     hl,de
+        ld      de,(pp_addr)
+        ld      (hl),e
+        inc     hl
+        ld      (hl),d
+        inc     hl
+        ld      a,(pp_prev)
+        ld      (hl),a
+        ret
+
+;  BACKWARDS. Two pixels of a line can share a byte, and then the second
+;  slot kept that byte with the first pixel already in it. Unwinding in the
+;  order they were drawn would leave that pixel behind; unwinding in
+;  reverse ends on the slot that holds the true background.
+px_undo:
+        ld      hl,(px_n)
+        ld      a,(hl)
+        or      a
+        jr      z,px_forget
+        ld      b,a
+        ld      l,a
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,de               ; count * 3, one past the last slot
+        ld      de,(px_base)
+        add     hl,de
+pu_next:
+        dec     hl
+        ld      a,(hl)
+        dec     hl
+        ld      d,(hl)
+        dec     hl
+        ld      e,(hl)
+        ld      (de),a
+        djnz    pu_next
+px_forget:
+        ld      hl,(px_n)
+        ld      (hl),0
+        ret
+
+px_use_dots:
+        ld      hl,ad_slot
+        ld      (px_base),hl
+        ld      hl,ad_n
+        ld      (px_n),hl
+        ld      a,AIM_DOT_N
+        ld      (px_max),a
+        ret
+
+px_use_band:
+        ld      hl,band_slot
+        ld      (px_base),hl
+        ld      hl,band_n
+        ld      (px_n),hl
+        ld      a,BAND_SLOTS
+        ld      (px_max),a
+        ret
+
+px_base:        dw      0
+px_n:           dw      0
+px_max:         db      0
+
+; ---- the two users -------------------------------------------------------
+aim_undot:
+        call    px_use_dots
+        jp      px_undo
+
+band_undo:
+        call    px_use_band
+        jp      px_undo
+
+ad_d:           db      0
+ad_n:           db      0
+ad_last:        dw      0
+ad_slot:        ds      AIM_DOT_N*3
+ad_angle:       db      #FF     ; the aim the dots on screen were drawn for
+
+; ---- shot_in_rect — CF set if the bird's box misses the redraw window ------
+shot_in_rect:
         ld      hl,(sh_px)
         bit     7,h
-        ret     nz
+        jr      nz,sir_no
         ld      a,h
         or      a
-        ret     nz
+        jr      nz,sir_no
         srl     h                   ; its leftmost char column
         rr      l
         srl     h
@@ -152,11 +391,11 @@ shot_draw_rect:
         add     a,b
         dec     a
         cp      c
-        ret     c                   ; the bird starts right of the window
+        jr      c,sir_no            ; the bird starts right of the window
         ld      a,c
         add     a,4
         cp      b
-        ret     c                   ; ...or ends left of it
+        jr      c,sir_no            ; ...or ends left of it
         ld      a,(sh_py)
         ld      c,a
         ld      a,(rr_y0)
@@ -165,13 +404,174 @@ shot_draw_rect:
         add     a,b
         dec     a
         cp      c
-        ret     c
+        jr      c,sir_no
         ld      a,c
         add     a,CR_HEIGHT-1
         cp      b
+        jr      c,sir_no
+        or      a                   ; CF = 0: it overlaps
+        ret
+sir_no:
+        scf
+        ret
+
+; ============================================================================
+;  The bird's backing store.
+;
+;  Every other sprite is erased by REBUILDING the scene underneath it: five
+;  columns of background, scenery run-streams, camera clipping, and a
+;  restack of everything else standing there. That is a lot of moving parts
+;  to get exactly right sixty times a second, and when one of them misses,
+;  the sprite stays on screen for good — a bird in flight leaves a trail of
+;  itself all the way across the level.
+;
+;  So the bird rebuilds nothing. Before it is drawn it KEEPS the pixels it
+;  is about to cover, and erasing is putting them back. Whatever it covered
+;  is exactly what it restores; there is nothing left to get wrong. It also
+;  fits in a frame, which the rebuild did not — so the flicker goes too.
+;
+;  Only while it is FLYING. On the sling the elastic has to be erased as
+;  well, and that reaches well outside the bird's own box.
+; ============================================================================
+shot_save:
+        call    spr_clip            ; the SAME rectangle the blit will touch
+        jr      c,sv_none
+        ld      a,(sb_byte0)
+        ld      (bk_byte0),a
+        ld      a,(sb_nblit)
+        ld      (bk_nblit),a
+        ld      a,(sb_y)
+        ld      (bk_y),a
+        ld      a,(sb_rows)
+        ld      (bk_rows),a
+        ld      (bk_left),a
+        ld      hl,shot_back
+        ld      (bk_ptr),hl
+        ld      a,(sb_y)
+        ld      c,a
+        call    sb_addr
+sv_row:
+        ld      de,(bk_ptr)
+        ld      a,(bk_nblit)
+        ld      b,a
+        push    hl
+sv_pix:
+        ld      a,(hl)
+        ld      (de),a
+        inc     de
+        inc     hl                  ; next byte, with the ring fold
+        ld      a,l
+        or      a
+        jr      nz,sv_next
+        ld      a,h
+        and     7
+        jr      nz,sv_next
+        ld      a,h
+        sub     8
+        ld      h,a
+sv_next:
+        djnz    sv_pix
+        ld      (bk_ptr),de
+        pop     hl
+        ld      a,(bk_left)
+        dec     a
+        ld      (bk_left),a
+        ret     z
+        inc     c
+        ld      a,c
+        and     7
+        jr      z,sv_newrow
+        ld      a,h                 ; same char row: exactly +#800
+        add     a,8
+        ld      h,a
+        jr      sv_row
+sv_newrow:
+        call    sb_addr
+        jr      sv_row
+sv_none:
+        xor     a
+        ld      (bk_rows),a
+        ret
+
+; ---- shot_restore — put the kept pixels back where they came from ---------
+shot_restore:
+        ld      a,(bk_rows)
+        or      a
+        ret     z
+        ld      (bk_left),a
+        ld      a,(bk_byte0)
+        ld      (sb_byte0),a        ; sb_addr works from this
+        ld      hl,shot_back
+        ld      (bk_ptr),hl
+        ld      a,(bk_y)
+        ld      c,a
+        call    sb_addr
+rs_row:
+        ld      de,(bk_ptr)
+        ld      a,(bk_nblit)
+        ld      b,a
+        push    hl
+rs_pix:
+        ld      a,(de)
+        ld      (hl),a
+        inc     de
+        inc     hl
+        ld      a,l
+        or      a
+        jr      nz,rs_next
+        ld      a,h
+        and     7
+        jr      nz,rs_next
+        ld      a,h
+        sub     8
+        ld      h,a
+rs_next:
+        djnz    rs_pix
+        ld      (bk_ptr),de
+        pop     hl
+        ld      a,(bk_left)
+        dec     a
+        ld      (bk_left),a
+        ret     z
+        inc     c
+        ld      a,c
+        and     7
+        jr      z,rs_newrow
+        ld      a,h
+        add     a,8
+        ld      h,a
+        jr      rs_row
+rs_newrow:
+        call    sb_addr
+        jr      rs_row
+
+; ---- shot_lift / shot_drop — brackets for anything that rebuilds the
+;      background where the bird happens to be standing.
+; ----------------------------------------------------------------------------
+shot_lift:
+        xor     a
+        ld      (bk_up),a
+        ld      a,(sh_state)
+        or      a
+        ret     z                   ; not flying: the old restack rule
+        ld      a,(sh_drawn)
+        or      a
+        ret     z
+        call    shot_in_rect
         ret     c
-        call    sling_band          ; and its elastic, if it is on the sling
-        jp      shot_draw
+        ld      a,1
+        ld      (bk_up),a
+        xor     a
+        ld      (sh_drawn),a
+        jp      shot_restore
+
+shot_drop:
+        ld      a,(bk_up)
+        or      a
+        jp      z,shot_draw_rect
+        xor     a
+        ld      (bk_up),a
+        jp      shot_draw           ; re-keeps the new background first
 
 ; ----------------------------------------------------------------------------
 ;  sling_band — two lines from the fork tips to the pouch.
@@ -188,6 +588,8 @@ sling_band:
         ld      a,(game_state)
         cp      GS_AIM
         ret     nz
+        call    band_undo           ; the old elastic comes off before the
+        call    px_use_band         ; new one is filed away
         ld      a,(mode0_pen_bytes+PEN_BROWN)
         ld      (pp_pen),a
 
@@ -257,8 +659,12 @@ shot_launch:
         ld      (aim_power),a
         ld      (charging),a
         ld      (cam_free),a        ; the shot re-arms the camera follow
+        ld      (cam_hit),a         ; ...and has not hit anything yet
         ld      a,FR_FLY
         ld      (sh_frame),a
+        ld      a,SND_LAUNCH        ; the twang
+        ld      b,0
+        call    snd_fx
         ld      a,1
         ld      (sh_state),a
         ret
@@ -283,7 +689,11 @@ shot_update:
 su_vy_ok:
         ld      (sh_vy),hl
 
-        call    shot_erase
+;  The erase used to happen HERE, before the physics — which left the bird
+;  off the screen for the whole of the integration and the collision sweep.
+;  At two or three display frames to a game frame that is a bird you can see
+;  through. It is now done immediately before the redraw, so the gap the eye
+;  gets is two blits wide instead of a whole update.
         ld      a,SHOT_SUBSTEPS
         ld      (su_steps),a
 su_step:
@@ -301,11 +711,35 @@ su_step:
         ld      a,(sh_state)
         or      a
         jr      z,su_done
+        call    shot_erase          ; ...and back again, in one breath
         call    shot_draw
         ld      a,1
         or      a
         ret
+; ---- the shot is over. What is left of it stays on the screen --------------
+;  A bird that vanishes the instant it stops reads as a bug: the wreck where
+;  it landed is part of the picture, and the restack keeps putting it back
+;  while the fort finishes coming down. The one case where there is nothing
+;  to draw is a bird that left the world, and that is also the one case the
+;  player most wants told about.
 su_done:
+        call    shot_erase
+        ld      hl,(sh_x+1)         ; still inside the world?
+        bit     7,h
+        jr      nz,su_lost
+        ld      de,WORLD_PX
+        or      a
+        sbc     hl,de
+        jr      nc,su_lost
+        call    shot_draw           ; leave it lying where it came to rest
+        ld      a,(cam_hit)         ; ...and did it ever hit anything?
+        or      a
+        jr      nz,su_end
+su_lost:
+        ld      a,SND_MISS          ; only dirt, or over the horizon
+        ld      b,0
+        call    snd_fx
+su_end:
         xor     a
         ret
 
@@ -369,7 +803,13 @@ shot_collide:
         jp      nc,sc_gone
 
 ; ---- the ground ------------------------------------------------------------
+;  ABOVE THE TOP OF THE WORLD IS NOT BELOW THE BOTTOM OF IT. The compare
+;  below is unsigned, so a bird at y = -16 arrives here as #FFF0 and reads
+;  as far underground — which snapped it onto the grass and ended the turn
+;  the moment a high lob cleared the screen.
         ld      hl,(sc_cy)
+        bit     7,h
+        jr      nz,sc_grid
         ld      de,GROUND_Y-BIRD_R
         or      a
         sbc     hl,de
@@ -427,6 +867,10 @@ sc_grid:
         jr      z,sc_dir_done
         ld      c,#FF
 sc_dir_done:
+        call    cam_mark_hit        ; the camera wants to show this
+        ld      a,SND_WOOD          ; ...and the ear wants to hear it
+        ld      b,1
+        call    snd_fx
         ld      a,(sc_cell)
         bit     7,a
         jr      nz,sc_hit_pig
@@ -441,6 +885,19 @@ sc_hit_pig:
         ld      a,(sc_dmg)
         call    pig_hit
         ; fall through
+
+; ---- cam_mark_hit — remember where the fort was struck ---------------------
+;  The bird's middle at the moment of contact. Preserves C, which is
+;  carrying the impact direction to impact_spread.
+; ----------------------------------------------------------------------------
+cam_mark_hit:
+        ld      hl,(sh_px)
+        ld      de,CR_WIDTH/2
+        add     hl,de
+        ld      (cam_hit_x),hl
+        ld      a,1
+        ld      (cam_hit),a
+        ret
 
 ; ---- bounce: back out of the cell, flip the dominant axis, lose energy -----
 sc_bounce:
@@ -533,7 +990,11 @@ sc_gone:
 ; ---- shot_settle_check — a bird that has stopped mattering ends the shot ---
 shot_settle_check:
         ld      hl,(sh_y+1)         ; a slow bird in mid-air has not stopped,
-        ld      de,GROUND_Y-BIRD_R-SHOT_CY-2    ; it is at the top of its arc
+        bit     7,h                 ; it is at the top of its arc — and the
+        jr      nz,ssc_moving       ; slowest point of a lob is exactly where
+                                    ; it is most likely to be off the screen,
+                                    ; where this compare would call it landed
+        ld      de,GROUND_Y-BIRD_R-SHOT_CY-2
         or      a
         sbc     hl,de
         jr      c,ssc_moving
@@ -592,6 +1053,10 @@ sd_pos:
         ld      (sp_w),a
         ld      a,CR_HEIGHT
         ld      (sp_h),a
+;  Keep what it is about to cover, ALWAYS — not only in flight. On the
+;  sling the pixels underneath include the elastic, so a blink can put the
+;  bird back without rebuilding anything.
+        call    shot_save
         ld      a,1
         ld      (sh_drawn),a
         jp      spr_blit
@@ -607,11 +1072,22 @@ shot_erase:
         ret     z
         xor     a
         ld      (sh_drawn),a
+        ld      a,(sh_state)
+        or      a
+        jp      nz,shot_restore     ; flying: just put the kept pixels back
         inc     a
         ld      (sdr_skip),a        ; do not paint it back inside its own erase
+;  A POSE CHANGE moves nothing: not the bird, not the elastic, not the aim
+;  dots. Putting the kept pixels back and blitting the new pose is two
+;  blits; rebuilding five columns of scenery for it is what made the blink
+;  flicker.
+        ld      a,(se_narrow)
+        or      a
+        jr      nz,se_pose
         ld      a,(game_state)
         cp      GS_AIM
-        jr      z,se_aim            ; on the sling: the elastic has to go too
+        jr      z,se_aim
+se_box:            ; on the sling: the elastic has to go too
         ld      hl,(sh_px)
         bit     7,h
         jr      z,se_xok
@@ -642,61 +1118,22 @@ se_yok:
 ;  frame of aiming costs about one display frame, so a rectangle twice the
 ;  size it needs to be does not merely cost time, it puts the erase and the
 ;  redraw in DIFFERENT displayed frames and the bird visibly blinks.
+se_pose:
+        call    shot_restore
+        ; fall through
 se_done:
         xor     a
         ld      (sdr_skip),a
         ret
 
 se_aim:
-        ld      a,(sling_x)         ; left edge: the far grip or the bird
-        sub     SLING_TIP_DL
-        ld      c,a
-        ld      a,(sh_px)
-        cp      c
-        jr      c,se_x0
-        ld      a,c
-se_x0:
-        srl     a
-        srl     a
-        ld      (rr_col0),a
-        ld      c,a
-
-        ld      a,(sling_x)         ; right edge: the near grip or the bird
-        add     a,SLING_TIP_DR
-        ld      b,a
-        ld      a,(sh_px)
-        add     a,CR_WIDTH-1
-        cp      b
-        jr      nc,se_x1
-        ld      a,b
-se_x1:
-        srl     a
-        srl     a
-        sub     c
-        inc     a
-        ld      (rr_ncol),a
-
-        ld      a,(sh_py)           ; top: the bird is always above the grips
-        ld      c,a
-        cp      SLING_TIP_Y
-        jr      c,se_y0
-        ld      c,SLING_TIP_Y
-se_y0:
-        ld      a,c
-        ld      (rr_y0),a
-        ld      b,a
-        ld      a,(sh_py)           ; bottom: ...and always below them
-        add     a,CR_HEIGHT
-        ld      c,a
-        ld      a,SLING_TIP_Y+2
-        cp      c
-        jr      c,se_y1
-        ld      c,a
-se_y1:
-        ld      a,c
-        sub     b
-        ld      (rr_n),a
-        call    redraw_rect
+;  Dots, then the bird, then the elastic — the exact reverse of the order
+;  they went on. Each one puts back the pixels it covered, so nothing is
+;  rebuilt: the whole aim used to repaint fifteen columns of scenery every
+;  time the sling moved a notch, and that was the flicker.
+        call    aim_undot
+        call    shot_restore
+        call    band_undo
         jr      se_done
 
 ; ============================================================================
@@ -799,6 +1236,14 @@ cos256:
 su_steps:       db      0
 sa_pull:        db      0
 sdr_skip:       db      0
+se_narrow:      db      0
+bk_byte0:       db      0
+bk_nblit:       db      0
+bk_y:           db      0
+bk_rows:        db      0
+bk_left:        db      0
+bk_up:          db      0
+bk_ptr:         dw      0
 sa_frame:       db      0
 sa_x:           dw      0
 sa_y:           dw      0

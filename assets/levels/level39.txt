@@ -6,7 +6,9 @@ sling   24
 birds   red yellow blue black white green
 scenery cloud_a 16 10 ; cloud_b 188 26 ; tree_a 248 40 ; bush_b 88 104
 map
-.............c.c....
-.............haah...
-........h....b..b..c
-.Y......b....bP.b.pc
+..............c.c...
+..............hhhh..
+..............iaai..
+..............hhhh..
+........h.x...b..b.c
+.Y......b.xp..bP.b.c

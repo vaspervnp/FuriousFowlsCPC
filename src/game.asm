@@ -18,23 +18,29 @@ game_init:
         ld      (score),hl
         xor     a
         ld      (level_no),a
-        ; fall through
+        jp      title_show          ; the game opens on the title, not on
+                                    ; level one
 
 ; ----------------------------------------------------------------------------
 ;  game_start_level — build the world for (level_no) and show it
 ; ----------------------------------------------------------------------------
 game_start_level:
+        call    snd_init            ; the theme lives in rot_art, which
+        xor     a                   ; level_load is about to build over
+        ld      (music_ok),a
         call    palette_black       ; hide the build
         xor     a
         ld      (cam_x),a
         ld      (scroll_dir),a
         ld      (flip_dir),a
         ld      (cam_free),a
+        ld      (cam_hit),a
         ld      (bird_idx),a
         ld      (banner_t),a
         call    crtc_set_offset
         ld      a,(level_no)
         call    level_load
+        call    swap_sides
         call    shot_reset
         call    repaint_window
         call    blocks_draw_all
@@ -90,6 +96,9 @@ game_next_bird:
         call    shot_draw_ready
         jp      ui_compose
 gnb_none:
+        ld      a,SND_SAD
+        ld      b,0
+        call    snd_fx
         ld      a,GS_FAIL
         ld      (game_state),a
         ld      a,BANNER_FRAMES
@@ -101,6 +110,8 @@ gnb_none:
 ; ============================================================================
 game_update:
         ld      a,(game_state)
+        cp      GS_TITLE
+        jp      z,gu_title
         cp      GS_AIM
         jp      z,gu_aim
         cp      GS_FLY
@@ -187,9 +198,10 @@ ga_cancel:
         ld      (ga_moved),a
 
 ga_redraw:
-        ld      a,(ga_moved)
-        or      a
-        call    nz,shot_draw_ready
+;  Unconditionally: the blink and the aim dots both change without anything
+;  setting ga_moved, and shot_draw_ready costs a sine and two compares when
+;  there is nothing to do.
+        call    shot_draw_ready
         ; fall through to the free look
 
 ; ----------------------------------------------------------------------------
@@ -288,6 +300,9 @@ gs_turn_over:
         ld      (bird_idx),a
         jp      game_next_bird
 gs_cleared:
+        ld      a,SND_FANFARE
+        ld      b,0
+        call    snd_fx
         ld      a,GS_CLEAR
         ld      (game_state),a
         ld      a,BANNER_FRAMES
@@ -315,6 +330,12 @@ gs_nobonus:
 ;  CLEAR / FAIL — a banner, then SPACE
 ; ----------------------------------------------------------------------------
 gu_banner:
+;  The fort does not stop falling just because the turn is over. Without
+;  this, a piece still in the air when the last pig popped hung there for
+;  good — frozen mid-fall, BS_FALL for ever, because nothing was left
+;  running to land it. It costs nothing once everything has settled.
+        call    blocks_update
+        call    pigs_update
         call    camera_follow_sling ; drift back to the sling while it waits
         ld      a,(banner_t)
         or      a
@@ -340,16 +361,88 @@ gb_retry:
         jp      game_start_level
 
 ; ============================================================================
+;  swap_sides — the whole of the reversed mode.
+;
+;  Nothing about the level changes: the fort is the same fort and the
+;  physics never asks what species anything is. All that turns over is who
+;  is in the pouch and who is standing in the way, and both are a creature
+;  TYPE — birds are 0..5 and pigs 6..8, so the swap is arithmetic on two
+;  small tables. The level files know nothing about it.
+; ============================================================================
+swap_sides:
+        ld      a,(swap_mode)
+        or      a
+        ret     z
+
+        ld      b,MAX_BIRDS         ; the sling is loaded with pigs
+        ld      hl,bird_queue
+ss_queue:
+        ld      a,(hl)
+ss_mod:
+        cp      PIG_TYPES           ; six bird types onto three pig ones
+        jr      c,ss_mod_done
+        sub     PIG_TYPES
+        jr      ss_mod
+ss_mod_done:
+        add     a,PIG_PIG
+        ld      (hl),a
+        inc     hl
+        djnz    ss_queue
+
+        ld      b,MAX_PIGS          ; ...and the fort is defended by birds
+        ld      ix,pigs
+ss_targets:
+        ld      a,(ix+ENT_STATE)
+        or      a
+        jr      z,ss_next
+        ld      a,(ix+ENT_TYPE)
+        sub     PIG_PIG
+        ld      (ix+ENT_TYPE),a
+ss_next:
+        ld      de,ENT_SIZE
+        add     ix,de
+        djnz    ss_targets
+        ret
+
+; ============================================================================
 ;  Camera. One char per frame, and only when the thing worth watching has
 ;  drifted out of the middle band — a camera that tracks exactly is a
 ;  camera that jitters.
 ; ============================================================================
+;  Two comfort bands. Following the bird wants a WIDE one — a camera that
+;  tracks exactly is a camera that jitters. Holding the impact wants a
+;  NARROW one, because the whole point is to put it in the middle and
+;  leave it there. The bounds are immediates inside camera_to, patched by
+;  whichever entry point you came in through.
+CAM_BAND_LO     equ 48
+CAM_BAND_HI     equ 104
+CAM_MID_LO      equ 76
+CAM_MID_HI      equ 84
+
 camera_follow_sling:
         ld      hl,(sh_px)
-        jr      camera_to
+        jr      cam_wide
 
+;  Once the bird has struck the fort the camera stops chasing it. The bird
+;  bounces off somewhere and stops mattering; what the player wants to
+;  watch is the thing it knocked over.
 camera_follow_shot:
+        ld      a,(cam_hit)
+        or      a
+        jr      z,cfs_bird
+        ld      a,CAM_MID_LO
+        ld      (ct_lo+1),a
+        ld      a,CAM_MID_HI
+        ld      (ct_hi+1),a
+        ld      hl,(cam_hit_x)
+        jr      camera_to
+cfs_bird:
         ld      hl,(sh_px)
+cam_wide:
+        ld      a,CAM_BAND_LO
+        ld      (ct_lo+1),a
+        ld      a,CAM_BAND_HI
+        ld      (ct_hi+1),a
         ; fall through
 
 ;  HL = the world x to keep in view
@@ -371,9 +464,9 @@ camera_to:
         or      a
         jr      nz,ct_right
         ld      a,l
-        cp      48
+ct_lo:  cp      CAM_BAND_LO
         jr      c,ct_left
-        cp      104
+ct_hi:  cp      CAM_BAND_HI
         ret     c                   ; comfortably inside: hold still
 ct_right:
         ld      a,(cam_x)

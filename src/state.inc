@@ -75,6 +75,14 @@ pigs_alive      equ vars+15
 settle_t        equ vars+16     ; quiet frames counted in GS_SETTLE
 banner_t        equ vars+17
 settle_cap      equ st_scratch+0
+music_ok        equ st_scratch+4    ; 1 = rot_art still holds the tune
+esc_armed       equ st_scratch+2    ; one ESC on its own does nothing:
+esc_t           equ st_scratch+3    ; a mis-hit mid-shot should not throw
+                                    ; the turn away
+swap_mode       equ st_scratch+1    ; 1 = the pigs do the throwing.
+                                    ; Chosen on the title screen and
+                                    ; kept across levels, so it lives
+                                    ; outside anything level_load clears
 settle_req      equ vars+18     ; 1 = the fort may have shifted, so
                                 ; blocks_update must sweep the grid
 score           equ vars+19     ; 3 bytes, BCD-free binary
@@ -126,12 +134,47 @@ spread_force    equ rr_col0+8
 spread_dir      equ spread_force+MAX_BLOCKS
 spread_pigf     equ spread_dir+MAX_BLOCKS
 
+;  ...and HOW FAR OUT each one was reached: 0 is the piece the bird hit, 1
+;  everything touching it, and so on. The forces alone say what happens but
+;  not in what order, and a fort that folds outward from the impact reads
+;  as cause and effect where the same pieces moving in table order read as
+;  noise. Recorded during the walk, spent by is_apply. See impact_spread.
+spread_hop      equ spread_pigf+MAX_PIGS
+spread_pighop   equ spread_hop+MAX_BLOCKS
+
+;  Where the bird struck the fort. Once it has, the camera stops chasing
+;  the bird and holds this point in the middle of the screen — that is
+;  where the collapse happens, and it is the whole reason for the shot.
+cam_hit_x       equ rr_col0+5   ; world x of the impact (16-bit)
+cam_hit         equ rr_col0+7   ; 1 = there has been one this turn
+
 ui_dirty        equ rr_col0+4   ; 1 = the status strip needs recomposing;
                                 ; done in the main loop, not wherever the
                                 ; count changed, because ui_blit is 13k
                                 ; T-states and pigs die inside the sweep
 
-st_scratch      equ spread_pigf+MAX_PIGS
+;  Three voices, nine bytes each: where the next step is, how long the
+;  current one has left, and the pitch and volume it is sliding through.
+snd_state       equ spread_pighop+MAX_PIGS
+
+;  The elastic is seventy-odd single pixels scattered over a wide box, and
+;  it moves every time the sling is wound another notch. Rebuilding the
+;  scenery under it to erase it is what the pull flickers on; keeping the
+;  byte each pixel covered costs three bytes apiece and puts it back
+;  exactly. Same mechanism as the aim dots — see px_keep in shot.asm.
+BAND_SLOTS      equ 80
+band_slot       equ snd_state+27
+band_n          equ band_slot+BAND_SLOTS*3
+
+st_scratch      equ band_n+1
 STATE_END       equ st_scratch+32
+
+;  The title theme borrows rot_art — five kilobytes that hold nothing until
+;  a level loads. That is free until you come BACK to the menu, by which
+;  point level_load has built the tilted block art over the top of it. So
+;  music_ok says whether the bytes are still music; once they are not, the
+;  menu is simply quiet. Making it permanent needs 446 bytes that this
+;  machine does not currently have spare — see the note in hardware.inc.
+music_base      equ rot_art
 
         assert  STATE_END < SCREEN_BASE

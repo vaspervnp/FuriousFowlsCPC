@@ -11,11 +11,18 @@
 ;    #0000-#003F  IM 1 vector at #0038
 ;    #0100-#01FF  np2mask   : art byte -> Mode 0 mask byte   (page aligned)
 ;    #0200-#02FF  np2data   : art byte -> Mode 0 data byte   (page aligned)
-;    #0300-#38FF  creature art, 54 frames x 256 B            (13824)
-;    #3900-#3F7F  spare
+;    #0400-#39FF  creature art, 54 frames x 256 B            (13824)
+;    #3A00-#3F7B  the read-only tables the code bank has no room for, in
+;                 one contiguous run: sin_table (page aligned, so it must
+;                 come first), the sounds, the font, the scenery offsets,
+;                 and then line_lut which is BUILT at boot rather than
+;                 loaded. Their addresses are computed from each other
+;                 below, so editing a sound cannot silently shift the rest
+;                 into the stack — the assert in main.asm catches it.
 ;    #3F80-#3FFF  stack (grows down from #4000)
 ;    #4000-#7FFF  code, scenery RLE, level records, tables
-;    #8000-#9DFF  block art, 60 pieces x 128 B               (7680)
+;    #8000-#98FF  block art, 50 pieces x 128 B               (6400)
+;    #9900-#9CFF  rot_map   : the four tilt maps             (1024)
 ;    #9E00-#BFFF  game state
 ;    #C000-#FFFF  video RAM
 ;
@@ -26,6 +33,23 @@
 ;  its final address. Scenery is run-length coded and read in place — see
 ;  scene.asm for why that costs nothing.
 ; ---------------------------------------------------------------------------
+;  The scanline lookup is BUILT at boot by gen_line_lut, so it needs an
+;  address but not a single byte of the loaded image. Keeping it in the
+;  code bank cost 400 bytes of a 16K budget that had run out; down here it
+;  costs nothing, and the spare below the stack was doing nothing anyway.
+;  Three read-only tables that the code bank has no room for. They are
+;  appended to the creature bank and copied down with it at boot, in THIS
+;  ORDER — art.asm asserts each one lands where it is declared here.
+sin_table               equ #3A00   ; page aligned: ld h,sin_table/256
+SIN_TABLE_SIZE          equ 256
+SOUNDS_BASE             equ sin_table+SIN_TABLE_SIZE
+font5x7                 equ SOUNDS_BASE+SOUNDS_SIZE
+FONT_SIZE               equ 39*7
+scenery_ofs             equ font5x7+FONT_SIZE
+SCENOFS_SIZE            equ 256
+line_lut                equ scenery_ofs+SCENOFS_SIZE
+LOW_TABLES_END          equ line_lut+SCREEN_LINES*2
+
 CODE_BASE               equ #4000
 STACK_TOP               equ #4000
 SCREEN_BASE             equ #C000
@@ -46,6 +70,11 @@ CREATURE_ART            equ #0400
 CREATURE_STAGE          equ #C000   ; where the loader parks it
 
 BLOCK_ART               equ #8000
+;  The tilt maps are read once per level load and never written. They
+;  used to sit in the code bank, where a kilobyte was a sixteenth of
+;  everything; retiring the sixth material set left room for them here,
+;  behind the block art and still inside the same loaded image.
+ROT_MAP_BASE            equ #9900
 STATE_BASE              equ #9E00
 
 ; ---------------------------------------------------------------------------
@@ -177,7 +206,21 @@ MAX_HITS                equ 10      ; ...and after this many it has spent
                                     ; itself, wherever it happens to be
 
 DMG_PER_SPEED           equ 12      ; block damage per px/frame of impact
-CRUSH_PER_SPEED         equ 7       ; ...and per px/frame of a falling block
+; ---- how a blow is handed out ----------------------------------------------
+;  1 = work the whole chain out first, then play it back OUTWARD from the
+;      impact, one ring of contacts at a time.
+;  0 = the original: apply it in block-table order as the walk leaves it.
+;  The old path is kept whole under the switch, not deleted.
+HIT_ORDERED             equ 1
+
+CRUSH_PER_SPEED         equ 17      ; ...and per px/frame of a falling block.
+                                    ; Calibrated, not picked: the slowest
+                                    ; fall block_land will act on is 2 px a
+                                    ; frame, so one cell of it comes to
+                                    ; 2x17 = 34 = PIG_HP_BASE. Anything that
+                                    ; genuinely drops on a plain pig kills
+                                    ; it; helmets and kings still need
+                                    ; weight or height behind it.
 
 ; ---------------------------------------------------------------------------
 ;  Game state machine
@@ -187,6 +230,7 @@ GS_FLY                  equ 1       ; it is in the air
 GS_SETTLE               equ 2       ; waiting for the dust to fall
 GS_CLEAR                equ 3       ; every pig popped
 GS_FAIL                 equ 4       ; out of birds
+GS_TITLE                equ 5       ; the screen it opens on
 SETTLE_FRAMES           equ 60      ; quiet frames before the turn ends
 SETTLE_MAX              equ 250     ; ...and the longest a settle may run
 BANNER_FRAMES           equ 100
@@ -246,10 +290,11 @@ KEY_SPACE_ROW           equ 5
 KEY_SPACE_MASK          equ #80
 KEY_N_ROW               equ 5
 KEY_N_MASK              equ #40
+KEY_ESC_ROW             equ 8       ; line 8 bit 2 on the CPC matrix
+KEY_ESC_MASK            equ #04
+ESC_WINDOW              equ 60      ; game frames the first press stays armed
 KEY_R_ROW               equ 6
 KEY_R_MASK              equ #04
-KEY_ESC_ROW             equ 8
-KEY_ESC_MASK            equ #04
 
 ; ---------------------------------------------------------------------------
 ;  Hardware colour values (already OR'ed with GA_SET_COLOUR).

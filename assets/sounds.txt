@@ -1,0 +1,88 @@
+# ============================================================================
+#  FURIOUS FOWLS — sounds.  Edit freely, then run make.
+#
+#  The CPC's AY-3-8912 has three channels. This engine gives each one a list
+#  of STEPS, one step at a time, one frame at a time. A step says where the
+#  pitch starts and which way it is sliding, where the volume starts and
+#  which way it is fading, and whether the noise generator is mixed in. That
+#  is enough for every cartoon noise there is: a slide is a swoop, a fast
+#  fade is a blip, and noise is anything that breaks.
+#
+#      step <frames> <period> <slide> <vol> <vfade> <noise>
+#
+#  frames  how long this step lasts, 1..255
+#  period  PSG tone period. Pitch = 125000 / period, so LOWER IS HIGHER.
+#          120 is about a top C, 500 a low one. 0 means silent.
+#  slide   added to the period every frame, -128..127. Positive slides DOWN
+#          in pitch (the period is getting longer). This is the swoop.
+#  vol     0..15
+#  vfade   added to the volume every frame, -8..7. Negative is a decay.
+#  noise   0 = pure tone. 1..31 mixes the noise generator in at that period
+#          (1 is a hiss, 31 a rumble). Add 32 to drop the tone and leave
+#          only noise — that is what a crash is.
+#
+#  Channel A is the bird and the menus, B is the fort coming apart, C is the
+#  pigs. A new sound on a channel simply replaces whatever was there, so a
+#  second collapse interrupts the first rather than queueing behind it.
+# ============================================================================
+
+# ---- channel A: the bird ---------------------------------------------------
+
+sound stretch           # ONE notch of the pull: a short creak of rubber.
+  step  2  700 -110   9   0   5    # It fires again at every notch, and there
+  step  3  480  -70   7  -3   7    # are eight of them, so keep it under the
+                                   # gap between notches or you only ever
+                                   # hear this first step.
+
+sound launch            # ...and the twang when it lets go. A real boing is
+  step  2  110   -8  14   0   0    # a pitch that snaps UP and wobbles down
+  step  3   70   30  14   0   0
+  step  3  160  -34  13  -1   0
+  step  4   58   44  11  -2   0
+  step  5  240   30   7  -2   0
+
+sound miss              # nothing but dirt, or gone over the horizon: the
+  step  4  300   30  11   0   0    # small descending noise of a wasted bird
+  step  4  420   45   9  -1   0
+  step  6  600   60   7  -1   0
+
+
+# ---- channel B: the fort ---------------------------------------------------
+
+sound thud              # the bird lands on something solid
+  step  3  700   90  14  -3  50
+  step  5  900  120   8  -2  60
+
+sound wood              # a plank takes a hit: a dry crack
+  step  2  300   40  13   0  40
+  step  4  420   60  10  -3  46
+
+sound crash             # something heavy arrives on the ground
+  step  4    0    0  15  -1  56
+  step  8    0    0  11  -2  62
+
+
+# ---- channel C: the pigs ---------------------------------------------------
+
+sound oink              # a pig gets hurt but lives: two indignant grunts
+  step  3  480   24  12   0   0
+  step  2    0    0   0   0   0
+  step  3  520   28  12  -3   0
+
+sound pop               # ...and when it does not: a squeal, then a pop
+  step  5  300  -22  13   0   0
+  step  3  180   50  14  -1   0
+  step  2  900    0  15  -7  30
+
+# ---- channel A again: the between-level noises -----------------------------
+
+sound fanfare           # every pig popped
+  step  5  478    0  13   0   0
+  step  5  379    0  13   0   0
+  step  5  319    0  13   0   0
+  step 10  239    0  13  -1   0
+
+sound sad               # out of birds: a small descending trombone
+  step  6  319   14  12   0   0
+  step  6  400   18  11  -1   0
+  step 10  500   22   9  -1   0

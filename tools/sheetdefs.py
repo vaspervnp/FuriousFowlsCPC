@@ -82,14 +82,19 @@ BLOCK_PIECES = [
 # set name, toughness (percent of the base hp), the pens the drawing code
 # paints with — (face, light edge, dark edge, detail) — and whether the
 # whole set is drawn THIN.
+#  EVERY set is drawn thin now. A fort of thin members reads as built —
+#  posts and lintels and bracing — where one of solid 16x16 blocks reads as
+#  a wall with holes in it, and thin uprights are the ones that topple
+#  instead of merely sliding. That also retired 'twig', which was only ever
+#  'wood, but thin': five sets instead of six, and the 1280 bytes it gave
+#  back are what let rot_map move out of the code bank.
 BLOCK_SETS = [
-    ('wood',   100, (4, 13, 11, 11), False),
-    ('stone',  170, (10, 2, 1, 1),   False),
-    ('ice',     60, (8, 2, 14, 14),  False),
-    ('sand',    85, (13, 2, 4, 4),   False),
-    ('metal',  220, (14, 2, 9, 9),   False),
-    ('twig',    50, (4, 13, 11, 11), True),   # thin wood: light, and it
-]                                             # goes over if you look at it
+    ('wood',   100, (4, 13, 11, 11), True),
+    ('stone',  170, (10, 2, 1, 1),   True),
+    ('ice',     60, (8, 2, 14, 14),  True),
+    ('sand',    85, (13, 2, 4, 4),   True),
+    ('metal',  220, (14, 2, 9, 9),   True),
+]
 
 BLOCK_W, BLOCK_H = 16, 16
 BLOCK_COUNT = len(BLOCK_SETS) * len(BLOCK_PIECES)

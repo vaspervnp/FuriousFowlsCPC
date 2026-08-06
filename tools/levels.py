@@ -88,7 +88,10 @@ PIG_NAMES = [p[0] for p in PIGS]
 #  wider and better defended as the numbers go up.
 # ===========================================================================
 def s_tower(col, floors, piece_wall='v', piece_floor='h'):
-    """A hollow tower `floors` high, two cells wide."""
+    """A hollow tower `floors` high and four cells wide, braced across the
+    middle of every storey above the first. The bracing is what turns it
+    from a stack of independent floors into something that has to be
+    brought down rather than nibbled at."""
     out = []
     for f in range(floors):
         base = GRID_H - 1 - f * 3
@@ -96,6 +99,8 @@ def s_tower(col, floors, piece_wall='v', piece_floor='h'):
         out.append((piece_wall, col + 3, base))
         out.append((piece_wall, col, base - 1))
         out.append((piece_wall, col + 3, base - 1))
+        if f:
+            out.append((piece_wall, col + 1, base - 1))
         for dx in range(4):
             out.append((piece_floor, col + dx, base - 2))
     return out
@@ -129,14 +134,47 @@ def s_bridge(col, span):
     return out
 
 
+def s_manor(col):
+    """Two bays under one roof. Three posts carry a first floor, two more
+    carry the loft, and the roof sits on top of that — five cells wide and
+    six tall, so a shot into the ground floor brings the whole thing down
+    rather than knocking a hole in it."""
+    out = []
+    for dx in (0, 2, 4):
+        out += [('i', col + dx, GRID_H - 1), ('i', col + dx, GRID_H - 2)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(5)]
+    out += [('i', col + 1, GRID_H - 4), ('i', col + 3, GRID_H - 4)]
+    out += [('h', col + dx, GRID_H - 5) for dx in range(5)]
+    out += [('/', col + 1, GRID_H - 6), ('\\', col + 3, GRID_H - 6)]
+    return out
+
+
+def s_gatehouse(col):
+    """Twin brick towers with a walkway between them. The two cells of the
+    gateway are left empty on purpose: that is where a pig stands, under
+    everything, which is the shot worth finding."""
+    out = []
+    for dx in (0, 5):
+        out += [('b', col + dx, GRID_H - 1), ('b', col + dx, GRID_H - 2),
+                ('b', col + dx, GRID_H - 3)]
+    out += [('h', col + dx, GRID_H - 4) for dx in range(6)]
+    out += [('c', col + 1, GRID_H - 5), ('c', col + 4, GRID_H - 5)]
+    out += [('a', col + 2, GRID_H - 5), ('a', col + 3, GRID_H - 5)]
+    return out
+
+
 def s_keep(col):
-    """A little castle: an arched gateway with a pig in it, brick walls
-    either side, and a crenellated top."""
+    """A little castle, now with a storey on it: an arched gateway at the
+    bottom, a floor over that, an upper chamber, and crenellations."""
     return [('b', col, GRID_H - 1), ('b', col, GRID_H - 2),
             ('b', col + 3, GRID_H - 1), ('b', col + 3, GRID_H - 2),
-            ('h', col, GRID_H - 3), ('h', col + 3, GRID_H - 3),
-            ('a', col + 1, GRID_H - 3), ('a', col + 2, GRID_H - 3),
-            ('c', col, GRID_H - 4), ('c', col + 2, GRID_H - 4)]
+            ('h', col, GRID_H - 3), ('h', col + 1, GRID_H - 3),
+            ('h', col + 2, GRID_H - 3), ('h', col + 3, GRID_H - 3),
+            ('i', col, GRID_H - 4), ('i', col + 3, GRID_H - 4),
+            ('a', col + 1, GRID_H - 4), ('a', col + 2, GRID_H - 4),
+            ('h', col, GRID_H - 5), ('h', col + 1, GRID_H - 5),
+            ('h', col + 2, GRID_H - 5), ('h', col + 3, GRID_H - 5),
+            ('c', col, GRID_H - 6), ('c', col + 2, GRID_H - 6)]
 
 
 def s_stack(col, n):
@@ -149,42 +187,57 @@ def default_level(n):
     step = (n - 1) % 8                          # ...and every fort shape too
     mset = SET_NAMES[SET_ORDER[tier]]
 
+    #  Two structures from the very first level, three once the birds get
+    #  numerous. A single hut is a target; a hut with an outbuilding is a
+    #  PROBLEM, because knocking one over is supposed to help with the
+    #  other. The cell budget is MAX_BLOCKS, so the combinations below are
+    #  chosen to stay inside it — assert_fits() at the end is the guard.
     blocks, pigs = [], []
-    if step in (0, 1):
-        blocks += s_hut(13)
-        pigs.append(('p', 14, GRID_H - 1))
-        if step == 1:
-            blocks += s_stack(9, 2)
-            pigs.append(('p', 10, GRID_H - 1))
-    elif step in (2, 3):
-        blocks += s_tower(13, 2)
-        pigs.append(('p', 14, GRID_H - 1))
-        pigs.append(('P' if step == 3 else 'p', 15, GRID_H - 4))
+    if step == 0:
+        blocks += s_hut(14) + s_stack(10, 3)
+        pigs += [('p', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
+    elif step == 1:
+        blocks += s_manor(13)
+        pigs += [('p', 14, GRID_H - 1), ('p', 16, GRID_H - 1)]
+    elif step == 2:
+        blocks += s_tower(14, 2) + s_hut(9)
+        pigs += [('p', 15, GRID_H - 1), ('p', 10, GRID_H - 1)]
+    elif step == 3:
+        blocks += s_gatehouse(13) + s_stack(10, 2)
+        pigs += [('P', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
     elif step == 4:
-        blocks += s_pyramid(12, 4)
-        pigs.append(('p', 17, GRID_H - 1))
-        pigs.append(('p', 10, GRID_H - 1))
+        blocks += s_pyramid(13, 4) + s_hut(8)
+        pigs += [('p', 18, GRID_H - 1), ('p', 9, GRID_H - 1)]
     elif step == 5:
-        blocks += s_bridge(11, 4)
-        blocks += s_stack(18, 2)
-        pigs.append(('p', 13, GRID_H - 1))
-        pigs.append(('P', 15, GRID_H - 1))
+        blocks += s_bridge(12, 4) + s_stack(18, 3)
+        pigs += [('p', 14, GRID_H - 1), ('P', 16, GRID_H - 1)]
     elif step == 6:
-        blocks += s_keep(13)
-        pigs.append(('P', 14, GRID_H - 1))
-        pigs.append(('p', 18, GRID_H - 1))
+        blocks += s_keep(14) + s_stack(10, 2)
+        pigs += [('P', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
     else:
-        blocks += s_keep(14)
-        blocks += s_hut(9)
-        pigs.append(('K', 15, GRID_H - 1))
-        pigs.append(('p', 10, GRID_H - 1))
-        pigs.append(('P', 18, GRID_H - 1))
+        blocks += s_keep(15) + s_hut(9)
+        pigs += [('K', 16, GRID_H - 1), ('p', 10, GRID_H - 1)]
+        if n > 20:
+            blocks += s_stack(13, 3)
+            pigs.append(('P', 13, GRID_H - 4))
 
     # the deeper you get, the more it is worth reinforcing the ground floor
     if n > 12:
         blocks += [('c', 19, GRID_H - 1), ('c', 19, GRID_H - 2)]
     if n > 24:
         blocks += [('b', 8, GRID_H - 1), ('h', 8, GRID_H - 2)]
+
+    #  A fort that overflows the block table would be silently truncated at
+    #  load, which looks like a level that was designed wrong rather than
+    #  one that was built wrong. Trim from the top down, where a missing
+    #  cell costs the least.
+    seen = {}
+    for ch, cx, cy in blocks:
+        seen[(cx, cy)] = ch
+    blocks = [(ch, cx, cy) for (cx, cy), ch in seen.items()]
+    if len(blocks) > MAX_BLOCKS:
+        blocks.sort(key=lambda b: -b[2])
+        blocks = blocks[:MAX_BLOCKS]
 
     # birds: more of them, and a wider cast, as the forts get harder
     n_birds = min(MAX_BIRDS, 3 + n // 10)

@@ -683,7 +683,7 @@ impact_spread:
         ld      (is_dir),a          ; the LDIR below needs BC
         ld      hl,spread_force     ; nothing has been reached yet
         ld      de,spread_force+1
-        ld      bc,MAX_BLOCKS*2+MAX_PIGS-1
+        ld      bc,MAX_BLOCKS*3+MAX_PIGS*2-1
         ld      (hl),0
         ldir
         ld      a,(is_base)
@@ -730,6 +730,14 @@ is_one:
         jp      c,is_next           ; ...and stops here
         jp      z,is_next
         ld      (is_out),a          ; what it passes on
+        ld      a,(is_cur)          ; ...and how far out it already is, so
+        ld      e,a                 ; everything this piece reaches is
+        ld      d,0                 ; recorded one ring further from the
+        ld      hl,spread_hop       ; impact than this piece is
+        add     hl,de
+        ld      a,(hl)
+        inc     a
+        ld      (is_hop),a
 
         ld      a,(is_cur)
         ld      e,a
@@ -849,6 +857,10 @@ is_relax:
         add     hl,de
         ld      a,(is_side)
         ld      (hl),a
+        ld      hl,spread_hop       ; a stronger force is always a shorter
+        add     hl,de               ; path, so this only ever moves inward
+        ld      a,(is_hop)
+        ld      (hl),a
         ld      a,1
         ld      (is_chg),a
         ret
@@ -863,12 +875,114 @@ is_relax_pig:
         ret     c
         ret     z
         ld      (hl),a
+        ld      hl,spread_pighop
+        add     hl,de
+        ld      a,(is_hop)
+        ld      (hl),a
         ld      a,1
         ld      (is_chg),a
         ret
 
 ; ---- and now hand it out ---------------------------------------------------
 ;  Applying moves pieces about, so it happens only once the walk is over.
+;  Nothing above this line touches a sprite or the screen: the whole chain
+;  of hits is worked out first, and only then played back.
+; ----------------------------------------------------------------------------
+        if HIT_ORDERED
+
+;  Played back OUTWARD: everything the blow reached directly, then
+;  everything one contact further, and so on. The forces alone say what
+;  happens but not in what order, and order is most of what the eye reads.
+;  Handing it out in block-table order made a fort come apart in whatever
+;  sequence the level file happened to list its pieces — the far side could
+;  move before the side that was struck. By ring, the collapse travels away
+;  from the impact, which is the thing the player is actually watching for.
+;
+;  Five rings, because a fifth is lost at every hop and the fifth is zero.
+is_apply:
+        xor     a
+        ld      (is_wave),a
+is_wave_loop:
+        xor     a
+        ld      (is_cur),a
+is_ap_loop:
+        ld      a,(is_cur)
+        ld      hl,block_count
+        cp      (hl)
+        jr      nc,is_ap_pigs
+        ld      e,a
+        ld      d,0
+        ld      hl,spread_force
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        jr      z,is_ap_next        ; the force never got here
+        ld      (is_dmg),a
+        ld      hl,spread_hop
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,is_wave
+        cp      (hl)
+        jr      nz,is_ap_next       ; ...or it did, but not in this ring
+        ld      hl,spread_dir
+        add     hl,de
+        ld      a,(hl)
+        ld      (is_side),a
+        ld      a,(is_cur)
+        ld      e,a
+        call    block_ptr
+        ld      a,(is_side)
+        or      a
+        jr      z,is_ap_hit         ; straight down or up: no sideways bias
+        ld      (ix+BLK_SHOVE),a
+is_ap_hit:
+        ld      a,(is_dmg)
+        call    block_hit
+is_ap_next:
+        ld      a,(is_cur)
+        inc     a
+        ld      (is_cur),a
+        jr      is_ap_loop
+is_ap_pigs:
+        xor     a
+        ld      (is_cur),a
+is_ap_pig:
+        ld      a,(is_cur)
+        ld      e,a
+        ld      d,0
+        ld      hl,spread_pigf
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        jr      z,is_ap_pnext
+        ld      (is_dmg),a
+        ld      hl,spread_pighop
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,is_wave
+        cp      (hl)
+        jr      nz,is_ap_pnext
+        ld      a,(is_cur)
+        ld      e,a
+        call    pig_ptr
+        ld      a,(is_dmg)
+        call    pig_hit
+is_ap_pnext:
+        ld      a,(is_cur)
+        inc     a
+        ld      (is_cur),a
+        cp      MAX_PIGS
+        jr      c,is_ap_pig
+        ld      a,(is_wave)
+        inc     a
+        ld      (is_wave),a
+        cp      SPREAD_PASSES
+        jp      c,is_wave_loop
+        ret
+
+        else
+
+;  The original: block table order, then pig table order. Kept whole.
 is_apply:
         xor     a
         ld      (is_cur),a
@@ -930,6 +1044,8 @@ is_ap_pnext:
         jr      c,is_ap_pig
         ret
 
+        endif
+
 ; ---- div5_up — A = ceil(A / 5) ---------------------------------------------
 div5_up:
         ld      b,0
@@ -969,6 +1085,7 @@ blocks_update:
         ret     z
         xor     a
         ld      (bu_moved),a
+        ld      (bu_busy),a
         ld      a,GRID_H-1
         ld      (bu_row),a
 bu_row_loop:
@@ -1011,6 +1128,16 @@ bu_done:
         ld      a,(bu_moved)
         or      a
         ret     nz
+;  Nothing moved — but do NOT call the fort settled while a piece is still
+;  marked as falling. The rows are swept bottom-up, so a piece set going
+;  after its own cell had already been passed would have settle_req cleared
+;  out from under it and stay in BS_FALL for ever, hanging in the air with
+;  nothing left running to land it. One more sweep always resolves it:
+;  bs_falling either descends or lands, so this cannot spin.
+        ld      a,(bu_busy)
+        or      a
+        ret     nz
+        xor     a
         ld      (settle_req),a
         ret
 
@@ -1183,6 +1310,8 @@ st_none:
 ; ---- tipping: one more step of lean, then let go ---------------------------
 bs_tipping:
         ld      a,1
+        ld      (bu_busy),a
+        ld      a,1
         ld      (bu_moved),a
         ld      a,(ix+BLK_TIPT)
         dec     a
@@ -1219,6 +1348,18 @@ bs_tip_drop:
 ; ---- falling ---------------------------------------------------------------
 bs_falling:
         ld      a,1
+        ld      (bu_busy),a         ; the fort is not settled yet
+;  Is there anywhere to go, BEFORE it moves? The fall used to integrate a
+;  whole cell's worth of offset and only then ask, so a piece already
+;  sitting on something sank fourteen pixels into it and was snapped back
+;  out — read as a bounce, and it was, but a drawing one: nothing in the
+;  model ever moved upward. Ask first and it simply stays put.
+        call    span_below_clear
+        jr      z,bs_fall_step
+        call    block_erase         ; (bu_moved stays clear: nothing moved,
+        jr      bs_rest_here        ;  so this cannot feed the settle loop)
+bs_fall_step:
+        ld      a,1
         ld      (bu_moved),a
         call    block_erase
 
@@ -1244,6 +1385,7 @@ bs_carry:
         jp      c,block_draw        ; still inside its own row
         call    span_below_clear
         jr      z,bs_descend
+bs_rest_here:
         ld      (ix+BLK_YOFF),0     ; it has arrived on something
         ld      (ix+BLK_STATE),BS_REST
 ;  Straighten up ONLY if it actually went somewhere. A beam whose pivot
@@ -1415,6 +1557,13 @@ bsup_tipl:
 ;  Damage to whatever is under the WHOLE span, in proportion to the speed.
 ;  A piece that has merely fallen takes none itself: rubble stays where it
 ;  lands, or a fort you knock down tidies itself away.
+;
+;  The crush is speed x length, so weight and height both tell — but it is
+;  CALIBRATED so that the lightest real fall still kills. Getting here means
+;  the piece came down at two pixels a frame or more, and one cell of it is
+;  then worth exactly a plain pig's thirty-four hit points. A helmet (x2)
+;  shrugs off a single plank and needs the beam; a king (x3) needs the beam
+;  coming down hard. See CRUSH_PER_SPEED.
 ; ----------------------------------------------------------------------------
 block_land:
         ld      a,(ix+BLK_VY_I)
@@ -1428,11 +1577,14 @@ block_land:
         ld      b,(ix+BLK_LEN)      ; a four-cell beam comes down with four
         call    mul8                ; times the weight, which is the whole
         ld      (bl_dmg),a          ; point of a roof falling on a pig
+        ld      a,SND_CRASH         ; something heavy has arrived
+        ld      b,1
+        call    snd_fx
 
         ld      a,(ix+BLK_ROW)
         inc     a
         cp      GRID_H
-        ret     nc                  ; it landed on the world floor
+        jr      nc,bl_side          ; it landed on the world floor
         ld      (bl_row),a
         ld      a,(ix+BLK_COL)
         ld      (bl_col),a
@@ -1470,6 +1622,52 @@ bl_next:
         dec     a
         ld      (bl_n),a
         jr      nz,bl_loop
+        ; fall through to the sideways half of the blow
+
+; ---- bl_side — the other component of the impact vector --------------------
+;  A piece rarely comes straight down. Shoved right, it lands still
+;  travelling right, and whatever it slams into on that side is hit by the
+;  same fall — so the crush follows the vector, not just gravity.
+; ----------------------------------------------------------------------------
+bl_side:
+        ld      a,(ix+BLK_SHOVE)
+        or      a
+        ret     z                   ; it fell straight down after all
+        bit     7,a
+        jr      nz,bl_sleft
+        ld      a,(ix+BLK_COL)      ; right: the cell past its right end
+        add     a,(ix+BLK_LEN)
+        jr      bl_stest
+bl_sleft:
+        ld      a,(ix+BLK_COL)
+        or      a
+        ret     z                   ; hard against the left of the world
+        dec     a
+bl_stest:
+        cp      GRID_W
+        ret     nc
+        ld      b,a
+        ld      c,(ix+BLK_ROW)
+        push    ix
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        jr      z,bl_sdone
+        bit     7,a
+        jr      nz,bl_spig
+        ld      e,a
+        call    block_ptr
+        ld      a,(bl_dmg)
+        call    block_hit
+        jr      bl_sdone
+bl_spig:
+        and     #7F
+        ld      e,a
+        call    pig_ptr
+        ld      a,(bl_dmg)
+        call    pig_hit
+bl_sdone:
+        pop     ix
         ret
 
 ; ----------------------------------------------------------------------------
@@ -1497,6 +1695,7 @@ bu_row:         db      0
 bu_col:         db      0
 bu_self:        db      0
 bu_moved:       db      0
+bu_busy:        db      0   ; a piece was still in motion this sweep
 bl_speed:       db      0
 bl_dmg:         db      0
 bl_row:         db      0
@@ -1518,6 +1717,8 @@ is_pass:        db      0
 is_chg:         db      0
 is_cur:         db      0
 is_out:         db      0
+is_hop:         db      0   ; rings from the impact, while walking
+is_wave:        db      0   ; ...and the ring being played back
 is_side:        db      0
 is_down:        db      0
 is_col:         db      0

@@ -310,6 +310,9 @@ ph_ok:
         ld      (ix+ENT_HP),a
         ld      (ix+ENT_FRAME),FR_HURT
         ld      (ix+ENT_ANIM),HURT_LEN
+        ld      a,SND_OINK          ; hurt, and indignant about it
+        ld      b,2
+        call    snd_fx
         call    settle_ping
         jp      pig_repose
 
@@ -320,6 +323,9 @@ pig_kill:
         ret     z
         cp      ES_DEAD
         ret     z
+        ld      a,SND_POP
+        ld      b,2
+        call    snd_fx
         call    pig_release         ; it stops holding anything up
         ld      (ix+ENT_STATE),ES_DYING
         ld      (ix+ENT_FRAME),FR_DEAD

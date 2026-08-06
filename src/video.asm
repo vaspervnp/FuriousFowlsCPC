@@ -288,17 +288,22 @@ draw_col_range:
                                     ; set up afterwards, not before.
         ld      a,(dcr_y)
         ld      c,a                 ; C = the scanline we are on
-        ld      l,a                 ; IY = colbuf + y*2, in SIXTEEN bits:
-        ld      h,0                 ; colbuf is 400 bytes, so any erase
-        add     hl,hl               ; starting below line 127 overflows an
-        ld      de,colbuf           ; 8-bit doubling and reads the wrong row
-        add     hl,de               ; — which is sky, over the turf
+        push    hl                  ; KEEP the VRAM address: HL is the only
+        ld      l,a                 ; pair free for the colbuf sum, and that
+        ld      h,0                 ; sum needs SIXTEEN bits — colbuf is 400
+        add     hl,hl               ; bytes, so any erase starting below line
+        ld      de,colbuf           ; 127 overflows an 8-bit doubling and
+        add     hl,de               ; reads the wrong row: sky, over the turf
         push    hl
         pop     iy
+        pop     hl                  ; ...and back to where we are drawing
         ld      a,(dcr_n)
         ld      b,a                 ; B = lines to go
+        ld      d,NP2DATA/256       ; colbuf is ART, video RAM is Mode 0.
+                                    ; The table page is loop-invariant, and
+                                    ; the only thing in here that touches D
+                                    ; is the recalc, which puts it back.
 dcr_loop:
-        ld      d,NP2DATA/256       ; colbuf is ART; video RAM is Mode 0
         ld      e,(iy+0)
         ld      a,(de)
         ld      (hl),a
@@ -328,6 +333,7 @@ dcr_recalc:
         ld      d,a
         call    world_to_screen
         pop     bc
+        ld      d,NP2DATA/256       ; world_to_screen used DE as scratch
         jr      dcr_loop
 
 ; ----------------------------------------------------------------------------
@@ -375,6 +381,14 @@ rp_loop:
 ;  callers need no clipping of their own.
 ; ============================================================================
 plot_px:
+;  Nothing written yet. px_keep reads this to tell a pixel that landed from
+;  one that was clipped — comparing against the previous address instead
+;  silently dropped every second pixel of a LINE, where neighbours share a
+;  byte, and the elastic then had no record of half of what it covered.
+        push    hl                  ; HL is the x we were handed: borrow it
+        ld      hl,0                 ; for a moment and give it straight back
+        ld      (pp_addr),hl
+        pop     hl
         cp      SCREEN_LINES
         ret     nc
         cp      PLAY_TOP
@@ -407,6 +421,13 @@ plot_px:
         jr      z,pp_even
         inc     l                   ; odd byte of the char; the base is even
 pp_even:
+;  Whatever we are about to cover, and where. The aim dots are single
+;  pixels scattered across a wide area; rebuilding the scene under them to
+;  erase five of them is what the flicker was. With this they can put the
+;  byte back exactly.
+        ld      (pp_addr),hl
+        ld      a,(hl)
+        ld      (pp_prev),a
         ld      a,(pp_x)
         rra                         ; bit 0 -> carry: which pixel of the byte
         ld      a,(pp_pen)
@@ -426,6 +447,9 @@ pp_right:
         or      c
         ld      (hl),a
         ret
+
+pp_addr:        dw      0           ; the byte plot_px last wrote to...
+pp_prev:        db      0           ; ...and what was in it before
 
 ; ----------------------------------------------------------------------------
 ;  draw_line — from (ln_x0, ln_y0) to (ln_x1, ln_y1) in (pp_pen), two
@@ -539,10 +563,12 @@ dl_plot:
         ld      a,(dl_y)
         push    hl
         call    plot_px
-        pop     hl
+        call    px_keep             ; the elastic keeps what it covers, so
+        pop     hl                  ; erasing it is a byte write per pixel
         ld      a,(dl_y)
         inc     a
-        jp      plot_px
+        call    plot_px
+        jp      px_keep
 
 dl_stepy:                           ; preserves A across the y step
         push    af
@@ -592,4 +618,3 @@ mode0_pen_bytes:
 dcr_col:        db      0
 dcr_y:          db      0
 dcr_n:          db      0
-line_lut:       ds      SCREEN_LINES*2

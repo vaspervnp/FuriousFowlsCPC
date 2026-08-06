@@ -24,11 +24,20 @@
         include "level_defs.inc"    ; the level compiler owns the geometry
         include "art_defs.inc"      ; the sheet importer owns the art shapes
         include "rot_defs.inc"      ; ...and gen_rot.py the tilt steps
+        include "sound_defs.inc"
+        include "music_defs.inc"
         include "hardware.inc"
         include "state.inc"
 
         org     CODE_BASE
         run     CODE_BASE
+
+;  The creature bank is copied down to CREATURE_ART at boot; anything else
+;  parked in low memory has to start above where it ENDS. The map comment
+;  is not the authority — this is.
+        assert  CREATURE_ART+CREATURE_ART_SIZE <= sin_table
+        assert  sin_table+SIN_TABLE_SIZE <= SOUNDS_BASE
+        assert  LOW_TABLES_END < STACK_TOP-128
 
 ; ============================================================================
 ;  ENTRY — reached from the BASIC loader, which has already parked the
@@ -55,22 +64,36 @@ entry_point:
         call    psg_init            ; ...or the keyboard reads as stuck
         call    palette_black
 
+        ld      hl,STATE_BASE       ; start from a known state, rather than
+        ld      de,STATE_BASE+1     ; from whatever the loader left. This has
+        ld      bc,STATE_END-STATE_BASE-1   ; to come FIRST: the theme lands
+        ld      (hl),0              ; in that range a few lines below, and
+        ldir                        ; this would wipe it straight back out
+
         ld      hl,CREATURE_STAGE   ; rescue the art from video RAM before
         ld      de,CREATURE_ART     ; anything draws over it
-        ld      bc,CREATURE_ART_SIZE
+        ld      bc,line_lut-CREATURE_ART
         ldir
-        ld      hl,SCREEN_BASE      ; ...then wipe the screen clean
+
+;  The title theme, out of video RAM and into the block-art workspace. Both
+;  ends of this are borrowed: the source is about to be wiped by the screen
+;  clear below, and the destination by the first level load. That is the
+;  point — the music should stop exactly when the game starts.
+        ld      hl,CREATURE_STAGE+(line_lut-CREATURE_ART)
+        ld      de,music_base
+        ld      bc,MUSIC_SIZE
+        ldir
+        ld      a,1
+        ld      (music_ok),a
+
+        ld      hl,SCREEN_BASE      ; ...and only now wipe the screen clean
         ld      de,SCREEN_BASE+1
         ld      bc,#3FFF
         ld      (hl),0
         ldir
-        ld      hl,STATE_BASE       ; and start from a known state, rather
-        ld      de,STATE_BASE+1     ; than from whatever the loader left
-        ld      bc,STATE_END-STATE_BASE-1
-        ld      (hl),0
-        ldir
 
         call    gen_line_lut
+        call    snd_init
         call    spr_init
         call    scene_init
         call    game_init
@@ -89,6 +112,7 @@ main_loop:
         call    kbd_scan
         call    hotkeys
         call    game_update
+        call    snd_update          ; one step of every voice
         call    ui_refresh          ; ...if anything it shows has changed
         call    scroll_prep         ; stage the next column, in the border
         jr      main_loop
@@ -112,7 +136,30 @@ ui_refresh:
 ;  hotkeys — R restarts the fort, N skips it (they are handy while you are
 ;  designing levels, and harmless to leave in).
 ; ----------------------------------------------------------------------------
+;  ESC TWICE goes back to the menu. Once does nothing, and the arming
+;  lapses after a second or so, because a single stray ESC in the middle of
+;  a shot should not cost you the game.
 hotkeys:
+        ld      a,(kbd_edge+KEY_ESC_ROW)
+        and     KEY_ESC_MASK
+        jr      z,hk_esc_idle
+        ld      hl,esc_armed
+        ld      a,(hl)
+        or      a
+        jr      nz,hk_bail          ; the second press
+        inc     (hl)
+        ld      a,ESC_WINDOW
+        ld      (esc_t),a
+        jr      hk_keys
+hk_esc_idle:
+        ld      a,(esc_t)
+        or      a
+        jr      z,hk_keys
+        dec     a
+        ld      (esc_t),a
+        jr      nz,hk_keys
+        ld      (esc_armed),a       ; the window closed: disarm
+hk_keys:
         ld      a,(kbd_edge+KEY_R_ROW)
         and     KEY_R_MASK
         jp      nz,game_start_level
@@ -127,6 +174,12 @@ hotkeys:
 hk_go:
         ld      (level_no),a
         jp      game_start_level
+
+hk_bail:
+        xor     a                   ; back to the menu, and back to level one
+        ld      (esc_armed),a
+        ld      (esc_t),a
+        jp      game_init
 
 ; ============================================================================
 ;  Scrolling, in two halves.
@@ -266,12 +319,13 @@ sp_oldcam:      db      0
         include "game.asm"
         include "ui.asm"
         include "input.asm"
+        include "title.asm"
+        include "sound.asm"
 
 ; ---- generated tables ------------------------------------------------------
         include "art_tables.inc"    ; block strengths, scenery strip offsets
         include "level_tables.inc"  ; where each of the forty records starts
         include "tables.inc"        ; font, strings, sine
-        include "rot_tables.inc"    ; the four tilt maps
 
 scenery_rle:
         incbin  "scenery.raw"
@@ -285,4 +339,9 @@ code_end:
         org     BLOCK_ART
 block_art_image:
         incbin  "blocks.raw"
+        assert  $ <= ROT_MAP_BASE
+
+; ---- the tilt maps, behind the art and out of the code bank ---------------
+        org     ROT_MAP_BASE
+        include "rot_tables.inc"
         assert  $ <= STATE_BASE

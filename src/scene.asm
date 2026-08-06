@@ -284,6 +284,9 @@ rr_span_ok:
         ld      a,(rr_ncol)
         or      a
         ret     z
+        call    shot_lift           ; a bird in flight keeps its own pixels;
+                                    ; take it off before the ground moves
+        ld      a,(rr_ncol)         ; (re-read: shot_lift does not preserve A)
         ld      b,a
         ld      a,(rr_col0)
 rr_loop:
@@ -330,4 +333,4 @@ rr_column:
 rr_restack:
         call    blocks_draw_rect
         call    pigs_draw_rect
-        jp      shot_draw_rect
+        jp      shot_drop

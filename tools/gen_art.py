@@ -159,10 +159,14 @@ def write_defs(scen_offsets, sizes):
         f.write('        db      %s\n'
                 % ','.join('1' if tall else '0'
                            for _p, _hp, tall in BLOCK_PIECES))
-        f.write('\nscenery_ofs:            ; strip -> offset into scenery_rle\n')
-        for i in range(0, len(scen_offsets), 8):
-            f.write('        dw      %s\n'
-                    % ','.join(str(v) for v in scen_offsets[i:i + 8]))
+    #  The strip offsets go out as a BINARY. They are read-only and the code
+    #  bank has no room: they ride down from video RAM with the creature
+    #  art, like the font and the sine. See art.asm.
+    blob = bytearray()
+    for v in scen_offsets:
+        blob += bytes((v & 0xFF, v >> 8))
+    with open(os.path.join(BUILD, 'scenofs.raw'), 'wb') as f:
+        f.write(bytes(blob))
 
 
 def main():
