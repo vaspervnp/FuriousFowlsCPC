@@ -80,6 +80,11 @@ music_ok        equ st_scratch+4    ; 1 = rot_art still holds the tune
 esc_armed       equ st_scratch+2    ; one ESC on its own does nothing:
 esc_t           equ st_scratch+3    ; a mis-hit mid-shot should not throw
                                     ; the turn away
+tries           equ st_scratch+5    ; goes taken at THIS fort. Lives out
+                                    ; here with the other things that
+                                    ; survive a level load, because a
+                                    ; retry IS a level load.
+
 swap_mode       equ st_scratch+1    ; 1 = the pigs do the throwing.
                                     ; Chosen on the title screen and
                                     ; kept across levels, so it lives
@@ -168,7 +173,19 @@ band_slot       equ snd_state+27
 band_n          equ band_slot+BAND_SLOTS*3
 
 st_scratch      equ band_n+1
-STATE_END       equ st_scratch+32
+
+;  The high score, and the driver's own working bytes. These sit OUTSIDE
+;  everything a level load clears, because they outlive not just a level
+;  but the whole session — they came off the disc at boot and go back on
+;  it at the menu.
+hi_score        equ st_scratch+32   ; 3 bytes, same shape as `score`
+difficulty      equ hi_score+3      ; DIFF_*, adjacent ON PURPOSE: the two
+HI_BLOB         equ 4               ; things worth keeping go to the disc
+                                    ; in one ldir and come back in another
+hi_dirty        equ hi_score+HI_BLOB    ; 1 = changed since the last write
+fdc_abort       equ hi_dirty+1      ; sticky: one timeout ends the operation
+
+STATE_END       equ fdc_abort+1
 
 ;  The title theme borrows rot_art — five kilobytes that hold nothing until
 ;  a level loads. That is free until you come BACK to the menu, by which

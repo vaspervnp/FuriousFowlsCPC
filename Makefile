@@ -33,6 +33,7 @@ ARTBIN    := $(BUILD)/FOWLART.BIN
 ARTSYM    := $(BUILD)/fowlart.sym
 LOADER    := $(BUILD)/FOWLS.BAS
 SPLASH    := $(BUILD)/REVIVE8B.SCR
+SCORES    := $(BUILD)/SCORES.BIN
 DSK       := $(DIST)/fowls.dsk
 
 SOURCES   := $(wildcard $(SRCDIR)/*.asm) $(wildcard $(SRCDIR)/*.inc)
@@ -134,10 +135,20 @@ $(SPLASH): assets/revive8b.scr
 	@mkdir -p $(BUILD)
 	cp assets/revive8b.scr $(SPLASH)
 
-$(DSK): $(BIN) $(ARTBIN) $(LOADER) $(SPLASH)
+#  SCORES.BIN goes on FIRST, and that ordering is the whole trick: its
+#  data block deterministically lands on track 0 sector #C5, the first
+#  data sector after the directory, which is the sector src/disk.asm
+#  writes to by hand. The file is never opened at runtime — AMSDOS is
+#  paged out — it exists only so the directory reserves that sector.
+$(SCORES):
+	@mkdir -p $(BUILD)
+	{ printf 'FF'; head -c 510 /dev/zero; } > $(SCORES)
+
+$(DSK): $(BIN) $(ARTBIN) $(LOADER) $(SPLASH) $(SCORES)
 	@mkdir -p $(DIST)
 	rm -f $(DSK)
-	$(IDSK) $(DSK) -n -i $(BIN) -t 1 -c $(LOAD_ADDR) -e $(EXEC_ADDR) -f
+	$(IDSK) $(DSK) -n -i $(SCORES) -t 0 -f
+	$(IDSK) $(DSK) -i $(BIN) -t 1 -c $(LOAD_ADDR) -e $(EXEC_ADDR) -f
 	$(IDSK) $(DSK) -i $(ARTBIN) -t 1 -c $(ART_ADDR) -e $(ART_ADDR) -f
 	$(IDSK) $(DSK) -i $(SPLASH) -t 1 -c $(ART_ADDR) -f
 	$(IDSK) $(DSK) -i $(LOADER) -t 0 -f

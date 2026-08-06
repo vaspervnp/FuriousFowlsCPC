@@ -30,6 +30,7 @@ import z80
 
 BUILD = 'build'
 OUT = os.environ.get('FOWLS_OUT', 'build/shots')
+DSK_PATH = os.environ.get('FOWLS_DSK', 'dist/fowls.dsk')
 FRAME_TICKS = 79872
 SLICES = 6
 
@@ -75,6 +76,12 @@ pressed = set()
 
 def on_out(addr, val):
     hi = addr >> 8
+    if fdc is not None and addr == 0xFB7F:
+        fdc.wr(val)
+        return
+    if fdc is not None and addr == 0xFA7E:
+        fdc.motor = val
+        return
     if hi == 0x7F:
         top = val & 0xC0
         if top == 0x00:
@@ -96,8 +103,128 @@ def on_out(addr, val):
             psg[state['psgsel']] = state['ppia']
 
 
+# ---------------- a uPD765 just big enough to hold a high score -------------
+#  Not a floppy controller: the four commands src/disk.asm actually sends,
+#  with one sector behind them, read from and written back to the DSK image
+#  on disc. Without it the driver is untestable — every wait times out, the
+#  game boots six seconds late and a save can never be proved to have
+#  happened. With it, "save, reboot, load" is a two-line test.
+class FDC:
+    def __init__(self, path, track, sect):
+        self.path, self.track, self.sect = path, track, sect
+        self.off = self._locate()
+        self.motor = 0
+        self.phase = 'cmd'          # cmd | exec_r | exec_w | res
+        self.buf, self.want, self.res, self.ri = [], 0, [], 0
+        self.data, self.di = bytearray(512), 0
+        self.pending = None         # SENSE INTERRUPT reply, once
+        self.writes = 0
+
+    def _locate(self):
+        """Byte offset of (track, sect) in an EXTENDED DSK."""
+        d = open(self.path, 'rb').read()
+        assert d[:8] == b'EXTENDED', 'expected an extended DSK'
+        ntrk, nside = d[0x30], d[0x31]
+        pos = 256
+        for t in range(ntrk):
+            size = d[0x34 + t] * 256
+            if t == self.track:
+                blk = d[pos:pos + size]
+                assert blk[:10] == b'Track-Info'
+                nsec, off = blk[0x15], pos + 256
+                for i in range(nsec):
+                    e = 0x18 + i * 8
+                    ln = blk[e + 6] | (blk[e + 7] << 8)
+                    if blk[e + 2] == self.sect:
+                        return off
+                    off += ln
+                raise SystemExit('sector %02X not on track %d' % (self.sect, t))
+            pos += size
+        raise SystemExit('track %d not in the image' % self.track)
+
+    def read_sector(self):
+        with open(self.path, 'rb') as f:
+            f.seek(self.off)
+            return bytearray(f.read(512))
+
+    def write_sector(self, data):
+        with open(self.path, 'r+b') as f:
+            f.seek(self.off)
+            f.write(bytes(data))
+        self.writes += 1
+
+    #  MSR: bit7 RQM, bit6 DIO (1 = FDC->CPU), bit5 EXM, bit4 CB
+    def msr(self):
+        if self.phase == 'cmd':
+            return 0x80 | (0x10 if self.buf else 0)
+        if self.phase == 'exec_w':
+            return 0xB0                 # RQM, EXM, CB — CPU writes data
+        if self.phase == 'exec_r':
+            return 0xF0                 # RQM, DIO, EXM, CB — CPU reads data
+        return 0xD0                     # result: RQM, DIO, CB
+
+    #  Keyed on the base opcode: the MFM and MT bits live above bit 4.
+    PARAMS = {0x03: 2, 0x07: 1, 0x08: 0, 0x0F: 2, 0x05: 8, 0x06: 8}
+
+    def wr(self, v):
+        if self.phase == 'exec_w':
+            self.data[self.di] = v
+            self.di += 1
+            if self.di == 512:
+                self.write_sector(self.data)
+                self.phase, self.res, self.ri = 'res', [0x40, 0x80, 0, 0, 0, 0, 2], 0
+            return
+        if self.phase != 'cmd':
+            return
+        self.buf.append(v)
+        need = self.PARAMS.get(self.buf[0] & 0x1F)
+        if need is None:
+            self.buf = []
+            return
+        if len(self.buf) < need + 1:
+            return
+        cmd, self.buf = self.buf, []
+        c = cmd[0] & 0x1F
+        if c == 0x03:                               # SPECIFY
+            pass
+        elif c in (0x07, 0x0F):                     # RECALIBRATE / SEEK
+            self.pending = [0x20, cmd[2] if c == 0x0F else 0]
+        elif c == 0x08:                             # SENSE INTERRUPT
+            if self.pending:
+                self.phase, self.res, self.ri = 'res', self.pending, 0
+                self.pending = None
+            else:
+                self.phase, self.res, self.ri = 'res', [0x80], 0
+        elif c == 0x06:                             # READ DATA
+            self.data, self.di, self.phase = self.read_sector(), 0, 'exec_r'
+        elif c == 0x05:                             # WRITE DATA
+            self.data, self.di, self.phase = bytearray(512), 0, 'exec_w'
+
+    def rd(self):
+        if self.phase == 'exec_r':
+            v = self.data[self.di]
+            self.di += 1
+            if self.di == 512:
+                self.phase, self.res, self.ri = 'res', [0x40, 0x80, 0, 0, 0, 0, 2], 0
+            return v
+        if self.phase == 'res':
+            v = self.res[self.ri]
+            self.ri += 1
+            if self.ri == len(self.res):
+                self.phase, self.res = 'cmd', []
+            return v
+        return 0xFF
+
+
+fdc = FDC(DSK_PATH, 0, 0xC5) if os.path.exists(DSK_PATH) else None
+
+
 def on_in(addr):
     hi = addr >> 8
+    if fdc is not None and addr == 0xFB7E:
+        return fdc.msr()
+    if fdc is not None and addr == 0xFB7F:
+        return fdc.rd()
     if hi == 0xF5:                      # VSYNC during slice 0
         return 0x01 if state['slice'] == 0 else 0x00
     if hi == 0xF4:

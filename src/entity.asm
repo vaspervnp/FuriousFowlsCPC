@@ -309,6 +309,15 @@ pig_hit:
         cp      ES_FALL
         ret     nz
 ph_ok:
+;  THE BLOW IS THE SCORE. Not the kill and not the wreckage: how hard the
+;  pigs were hit, so a shot that catches three of them beats a shot that
+;  flattens one, and a fort demolished around a pig that survived scores
+;  nothing at all.
+        push    bc
+        ld      l,b
+        ld      h,0
+        call    score_add
+        pop     bc
         ld      a,(ix+ENT_HP)
         sub     b
         jr      c,pig_kill
@@ -336,10 +345,6 @@ pig_kill:
         ld      (ix+ENT_STATE),ES_DYING
         ld      (ix+ENT_FRAME),FR_DEAD
         ld      (ix+ENT_ANIM),DIE_LEN
-        ld      hl,(score)
-        ld      de,500
-        add     hl,de
-        ld      (score),hl
         ld      a,(pigs_alive)
         or      a
         jr      z,pk_draw

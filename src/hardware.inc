@@ -259,6 +259,16 @@ GS_SETTLE               equ 2       ; waiting for the dust to fall
 GS_CLEAR                equ 3       ; every pig popped
 GS_FAIL                 equ 4       ; out of birds
 GS_TITLE                equ 5       ; the screen it opens on
+GS_OVER                 equ 6       ; goes used up, and that is that
+
+;  How many goes a fort allows, chosen at the menu. The count is what the
+;  difficulty IS: the forts do not change, the number of chances at them
+;  does — which is the only knob this engine has that does not also make
+;  the physics a lie.
+DIFF_EASY               equ 0
+DIFF_MEDIUM             equ 1
+DIFF_HARD               equ 2
+DIFF_COUNT              equ 3
 SETTLE_FRAMES           equ 60      ; quiet frames before the turn ends
 SETTLE_MAX              equ 250     ; ...and the longest a settle may run
 BANNER_FRAMES           equ 100
@@ -275,6 +285,16 @@ PULL_MAX                equ 14      ; how far back the bird is drawn
 ; ---------------------------------------------------------------------------
 ;  I/O ports (the CPC decodes the HIGH byte: always use BC + OUT (C))
 ; ---------------------------------------------------------------------------
+;  Floppy. The high score is written straight to a sector with the ROMs
+;  paged out — no AMSDOS, no firmware. SCORES.BIN exists only so that the
+;  directory reserves the sector; see src/disk.asm.
+FDC_MSR                 equ #FB7E   ; main status register (read)
+FDC_DAT                 equ #FB7F   ; data register
+FDC_MOTOR               equ #FA7E   ; drive motor on/off
+SCORE_TRACK             equ 0       ; the first data sector after the
+SCORE_SECT              equ #C5     ; directory, which is where iDSK puts
+                                    ; the first file imported onto the disc
+
 GA_PORT                 equ #7F00   ; Gate Array (write only)
 CRTC_SEL                equ #BC00
 CRTC_DAT                equ #BD00

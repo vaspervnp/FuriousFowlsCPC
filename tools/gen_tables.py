@@ -94,6 +94,23 @@ STRINGS = [
     ("str_thpig",   "UP - THROW PIGS"),
     ("str_credit",  "REVIVE8BIT - 2026 - VASPER"),
     ("str_pigs",    "PIGS"),
+    #  The status strip is 160 pixels and a glyph is six of them, so it
+    #  holds twenty-six. Spelling out LEVEL, BIRDS and PIGS used all but
+    #  three of those; two-letter labels leave room for the score, which is
+    #  the thing the player is actually playing for.
+    ("str_lv",      "LV"),
+    ("str_bd",      "BD"),
+    ("str_pg",      "PG"),
+    ("str_sc",      "SC"),
+    ("str_hi",      "HI SCORE"),
+    ("str_over",    "GAME OVER"),
+    ("str_menu",    "SPACE - MENU"),
+    ("str_go",      "GO"),
+    ("str_game",    "GAME"),
+    ("str_overb",   "OVER"),
+    ("str_easy",    "DOWN - EASY"),
+    ("str_med",     "DOWN - MEDIUM"),
+    ("str_hard",    "DOWN - HARD"),
 ]
 
 

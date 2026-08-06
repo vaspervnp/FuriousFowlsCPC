@@ -402,3 +402,72 @@ them behind the tilt maps costs nothing and hands the code bank back a
 fifth of itself. The state block moved up to make room; it is 6.5 KB and
 there is still 1153 bytes between its end and video RAM, which the assert
 at the foot of `state.inc` is watching.
+
+---
+
+## Score, high score on the disc, retries and difficulty
+
+**The score is how hard the pigs were hit.** Every blow that lands on a
+pig adds its own force, so a shot that catches three of them beats a shot
+that flattens one — plus `BIRD_BONUS` (100) for every bird still in the
+queue when a fort clears. Nothing is scored for damage to the fort: the
+fort is the means, not the end, and paying for it rewarded knocking a wall
+down and walking away from the pig behind it. Twenty-four bits, because
+fifty forts does not fit in sixteen and a score that wraps is worse than
+no score.
+
+**The strip had to be compacted.** 160 pixels at six per glyph is
+twenty-six of them, and LEVEL / BIRDS / PIGS used all but three. It reads
+`LV01 BD3 PG2 SC000450` now.
+
+**A bug worth naming**: `ui_num6` used `B` as both the pen and the `djnz`
+counter, so the six digits came out in pens 6,5,4,3,2,1 — and pen 1 is
+BLACK on a black strip, so the score silently lost its units column. It
+looked like clipping and it was a register.
+
+**And another**: `ui_compose` fills `hud_buf` and nothing more; the strip
+only reaches the screen through `ui_refresh` or the scroll seam. Both
+banner paths ended in `jp ui_compose`, so OUT OF BIRDS was composed and
+never blitted — invisible since the day it was written. FORT DOWN! got
+away with it only because a dying pig raises `ui_dirty` on its own.
+
+### The high score, on the floppy
+
+`src/disk.asm` is CreepersCPC's uPD765 driver, lifted whole. It is not
+worth re-deriving: every warning in its header is a bug that once cost
+somebody a working disc image. It talks to the controller through
+`#FB7E`/`#FB7F` with both ROMs paged out and interrupts off — no AMSDOS,
+no firmware — writes track 0 sector `#C5`, and only trusts a save after
+reading it back and comparing. `SCORES.BIN` is imported onto the DSK
+FIRST so that its data block lands on that sector; it is never opened at
+runtime.
+
+The payload is the high score and the difficulty, adjacent in RAM on
+purpose so both go out in one `ldir`. The write happens at the menu and
+nowhere else: spinning the motor stops the machine for about a second,
+which is unnoticeable at a menu and unforgivable mid-shot.
+
+**`cpcshot.py` now emulates the controller** — the four commands the
+driver sends, one sector, read from and written back to the DSK on disc.
+Without it the driver is untestable: every wait times out, the game boots
+six seconds late, and a save can never be proved to have happened. With
+it, "seed the sector, play, ESC to the menu, read the sector" is a
+four-line test, and it is what proved the round trip: `disc: hi=276
+writes=1`.
+
+**And RASM only writes symbols for LABELS.** Every address in `state.inc`
+is an equate, so the headless tools had to derive the layout by
+arithmetic — and were wrong twice, which is what made one watcher report
+that blocks never moved in a frame where the screenshot showed them
+thrown across the screen. `main.asm` now emits `sym_*` labels for the
+addresses the tools ask about, so they cannot drift again.
+
+### Retries and difficulty
+
+Five goes at a fort used to be unlimited goes. Now the count is the
+difficulty, chosen with DOWN at the menu: **Easy 5, Medium 3, Hard 2**.
+Run out and it is GAME OVER — written big and two-tone across the middle
+of the screen, the same lettering as the title, with SPACE to go back to
+the menu. The camera snaps to the sling first, both because `title_text`
+keeps its x in a single byte and because the fort that beat you is worth
+looking at from the place you were throwing at it.

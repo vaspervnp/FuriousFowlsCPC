@@ -683,10 +683,6 @@ block_hit:
         ld      (ix+BLK_VY_I),1
         ld      (ix+BLK_TIPT),0
         ld      (ix+BLK_FELL),0
-        ld      hl,(score)
-        ld      de,25
-        add     hl,de
-        ld      (score),hl
         ld      a,(ix+BLK_PIECE)
         cp      BLK_TNT
         jp      nz,settle_ping

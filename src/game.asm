@@ -14,8 +14,14 @@
 ; ============================================================================
 
 game_init:
-        ld      hl,0
-        ld      (score),hl
+        call    score_reset
+        xor     a
+        ld      (hi_score),a        ; nothing on the disc yet, and hi_load
+        ld      (hi_score+1),a      ; leaves these alone if it cannot read
+        ld      (hi_score+2),a      ; the sector
+        ld      (difficulty),a      ; ...and it opens on EASY
+        ld      (hi_dirty),a
+        call    hi_load
         xor     a
         ld      (level_no),a
         jp      title_show          ; the game opens on the title, not on
@@ -95,15 +101,48 @@ game_next_bird:
         ld      (game_state),a
         call    shot_draw_ready
         jp      ui_compose
+;  OUT OF BIRDS. That is one go used; MAX_TRIES of them and the game is
+;  over rather than merely restarted, which is the difference between a
+;  fort being a puzzle and a fort being a wall you lean on until it gives.
 gnb_none:
         ld      a,SND_SAD
         ld      b,0
         call    snd_fx
+        ld      hl,tries
+        inc     (hl)
+        ld      a,(hl)
+        ld      c,a
+        call    tries_max
+        ld      b,a
+        ld      a,c                 ; goes taken >= goes allowed?
+        cp      b
         ld      a,GS_FAIL
+        jr      c,gnb_state
+;  GAME OVER. Snap back to the sling first: title_text keeps its x in one
+;  byte, so the big lettering can only be laid down with the camera at the
+;  left of the world — and that is where it wants to be anyway, showing
+;  the player the fort that beat them from the place they threw at it.
+        call    hi_check            ; the last score there will ever be
+        xor     a
+        ld      (cam_x),a
+        ld      (scroll_dir),a
+        ld      (flip_dir),a
+        call    crtc_set_offset
+        call    world_repaint
+        call    over_show
+        ld      a,GS_OVER
+gnb_state:
         ld      (game_state),a
         ld      a,BANNER_FRAMES
         ld      (banner_t),a
-        jp      ui_compose
+;  RAISE THE FLAG, do not just compose. ui_compose fills hud_buf and
+;  nothing more; the strip only reaches the screen through ui_refresh or
+;  the scroll seam. Composing a banner and never blitting it is why OUT OF
+;  BIRDS was invisible — the CLEAR banner got away with it only because a
+;  dying pig raises the flag on its own.
+        ld      a,1
+        ld      (ui_dirty),a
+        ret
 
 ; ============================================================================
 ;  game_update — one frame
@@ -307,8 +346,7 @@ gs_cleared:
         ld      (game_state),a
         ld      a,BANNER_FRAMES
         ld      (banner_t),a
-        ld      hl,(score)          ; a bird unspent is a bird earned
-        ld      a,(bird_count)
+        ld      a,(bird_count)      ; a bird unspent is a bird earned
         ld      c,a
         ld      a,(bird_idx)
         inc     a
@@ -319,12 +357,115 @@ gs_cleared:
         jr      z,gs_nobonus
         ld      b,a
 gs_bonus:
-        ld      de,1000
-        add     hl,de
+        push    bc
+        ld      hl,BIRD_BONUS
+        call    score_add
+        pop     bc
         djnz    gs_bonus
 gs_nobonus:
+        call    hi_check
+        ld      a,1
+        ld      (ui_dirty),a
+        ret
+
+; ============================================================================
+;  Score
+;
+;  The score is HOW HARD THE PIGS WERE HIT — every blow that lands on a pig
+;  adds its own force, so a shot that grazes three of them beats a shot that
+;  flattens one — plus a hundred for every bird still in the queue when the
+;  level clears. Nothing is scored for damage to the fort: the fort is the
+;  means, not the end, and paying for it rewarded knocking a wall down and
+;  walking away from the pig behind it.
+;
+;  Twenty-four bits. Fifty forts at a few hundred a fort does not fit in
+;  sixteen, and a score that wraps to nothing is worse than no score.
+; ============================================================================
+BIRD_BONUS      equ 100
+
+; ---- tries_max — A = how many goes this difficulty allows ------------------
+tries_max:
+        ld      a,(difficulty)
+        cp      DIFF_COUNT
+        jr      c,tm_ok
+        xor     a
+tm_ok:
+        ld      hl,tries_tab
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      a,(hl)
+        ret
+tries_tab:
+        db      5,3,2               ; easy, medium, hard
+
+; ---- score_reset — a new game, from the title ------------------------------
+score_reset:
+        xor     a
+        ld      (score),a
+        ld      (score+1),a
+        ld      (score+2),a
+        ret
+
+; ---- score_add — HL = points to add ----------------------------------------
+score_add:
+        ld      de,(score)
+        add     hl,de
         ld      (score),hl
-        jp      ui_compose
+        ret     nc
+        ld      hl,score+2
+        inc     (hl)
+        ret
+
+; ---- hi_check — has this beaten the disc? ----------------------------------
+;  Only the FLAG is set here. Writing a sector stops the machine for about
+;  a second while the motor spins up, and doing that in the middle of a
+;  level would be felt. It goes to the disc at the menu — see hi_flush.
+; ----------------------------------------------------------------------------
+hi_check:
+        ld      a,(score+2)
+        ld      hl,hi_score+2
+        cp      (hl)
+        jr      c,hc_no
+        jr      nz,hc_yes
+        ld      hl,(score)
+        ld      de,(hi_score)
+        or      a
+        sbc     hl,de
+        jr      c,hc_no
+        jr      z,hc_no
+hc_yes:
+        ld      hl,(score)
+        ld      (hi_score),hl
+        ld      a,(score+2)
+        ld      (hi_score+2),a
+        ld      a,1
+        ld      (hi_dirty),a
+hc_no:
+        ret
+
+; ---- hi_flush — put it on the disc, if it has moved since the last time --
+hi_flush:
+        ld      a,(hi_dirty)
+        or      a
+        ret     z
+        jp      hi_save
+
+; ----------------------------------------------------------------------------
+;  game_to_menu — leave a game in progress. The disc write happens HERE and
+;  nowhere else: it stops the machine for about a second while the motor
+;  spins up, which is unnoticeable at a menu and unforgivable mid-shot.
+; ----------------------------------------------------------------------------
+game_to_menu:
+        xor     a
+        ld      (tries),a
+        call    hi_flush
+        call    score_reset
+        xor     a
+        ld      (level_no),a
+        jp      title_show
 
 ; ----------------------------------------------------------------------------
 ;  CLEAR / FAIL — a banner, then SPACE
@@ -336,7 +477,11 @@ gu_banner:
 ;  running to land it. It costs nothing once everything has settled.
         call    blocks_update
         call    pigs_update
+        ld      a,(game_state)      ; GAME OVER has already snapped there,
+        cp      GS_OVER             ; and the big lettering must not be
+        jr      z,gb_held           ; scrolled out from under itself
         call    camera_follow_sling ; drift back to the sling while it waits
+gb_held:
         ld      a,(banner_t)
         or      a
         jr      z,gb_wait
@@ -348,13 +493,18 @@ gb_wait:
         and     KEY_SPACE_MASK
         ret     z
         ld      a,(game_state)
-        cp      GS_CLEAR
+        cp      GS_OVER
+        jp      z,game_to_menu      ; nothing left to do but go and look at
+        cp      GS_CLEAR            ; the high score
         jr      nz,gb_retry
+        xor     a                   ; a NEW fort, so a fresh five goes
+        ld      (tries),a
         ld      a,(level_no)
         inc     a
         cp      LEVEL_COUNT
         jr      c,gb_go
-        xor     a                   ; round the forty and start again
+        jp      game_to_menu        ; the whole round is done: back to the
+                                    ; menu, where the high score is written
 gb_go:
         ld      (level_no),a
 gb_retry:

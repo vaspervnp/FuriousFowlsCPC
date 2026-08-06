@@ -179,7 +179,7 @@ hk_bail:
         xor     a                   ; back to the menu, and back to level one
         ld      (esc_armed),a
         ld      (esc_t),a
-        jp      game_init
+        jp      game_to_menu
 
 ; ============================================================================
 ;  Scrolling, in two halves.
@@ -338,6 +338,7 @@ sp_oldcam:      db      0
         include "input.asm"
         include "title.asm"
         include "sound.asm"
+        include "disk.asm"
 
 ; ---- generated tables ------------------------------------------------------
         include "art_tables.inc"    ; block strengths, scenery strip offsets
@@ -355,6 +356,29 @@ code_end:
 level_data:
         incbin  "levels.raw"
         assert  $ <= STATE_BASE
+
+;  Not code: RASM only writes a symbol for a LABEL, and every address in
+;  state.inc is an equate, so the headless tools had to guess the layout
+;  from arithmetic and were wrong twice. These put the ones the tools ask
+;  about into the .sym where they cannot drift.
+ org score
+sym_score:
+ org hi_score
+sym_hi_score:
+ org tries
+sym_tries:
+ org difficulty
+sym_difficulty:
+ org blocks
+sym_blocks:
+ org grid
+sym_grid:
+ org pigs
+sym_pigs:
+ org cam_x
+sym_cam_x:
+ org game_state
+sym_game_state:
 
 ; ---- block art, at its permanent address and needing no move ---------------
         org     BLOCK_ART

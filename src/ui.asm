@@ -24,28 +24,30 @@ ui_compose:
         cp      GS_CLEAR
         jr      z,uc_clear
         cp      GS_FAIL
-        jr      z,uc_fail
+        jp      z,uc_fail
+        cp      GS_OVER
+        jp      z,uc_over
 
-        ld      hl,str_level        ; LEVEL nn
+        ld      hl,str_lv           ; LV nn
         ld      c,2
         ld      b,PEN_WHITE
         call    ui_text
         ld      a,(level_no)
         inc     a
-        ld      c,36
+        ld      c,14
         ld      b,PEN_YELLOW
         call    ui_num2
 
 ;  The two counters keep their positions and swap their LABELS: in the
 ;  reversed mode the thing in the pouch is a pig and the thing in the way
 ;  is a bird, and a strip that says otherwise is just wrong.
-        ld      hl,str_birds        ; what is left to throw
+        ld      hl,str_bd           ; what is left to throw
         ld      a,(swap_mode)
         or      a
         jr      z,uc_lbl1
-        ld      hl,str_pigs
+        ld      hl,str_pg
 uc_lbl1:
-        ld      c,54
+        ld      c,32
         ld      b,PEN_WHITE
         call    ui_text
         ld      a,(bird_count)
@@ -57,24 +59,32 @@ uc_lbl1:
         jr      nc,uc_birds
         xor     a
 uc_birds:
-        ld      c,90
+        ld      c,44
         ld      b,PEN_YELLOW
         call    ui_num1
 
-        ld      hl,str_pigs         ; ...and what is still standing
+        ld      hl,str_pg           ; ...and what is still standing
         ld      a,(swap_mode)
         or      a
         jr      z,uc_lbl2
-        ld      hl,str_birds
+        ld      hl,str_bd
 uc_lbl2:
-        ld      c,104
+        ld      c,56
         ld      b,PEN_WHITE
         call    ui_text
         ld      a,(pigs_alive)
-        ld      c,136               ; BIRDS is a glyph longer than PIGS; this
-                                    ; sits clear of either
+        ld      c,68
         ld      b,PEN_GREEN
-        jp      ui_num1
+        call    ui_num1
+
+        ld      hl,str_sc           ; ...and what it has all been worth
+        ld      c,86
+        ld      b,PEN_WHITE
+        call    ui_text
+        ld      hl,score
+        ld      c,98
+        ld      b,PEN_YELLOW
+        jp      ui_num6
 
 uc_clear:
         ld      hl,str_clear
@@ -87,11 +97,28 @@ uc_clear:
         jp      ui_text
 uc_fail:
         ld      hl,str_fail
-        ld      c,8
+        ld      c,2
         ld      b,PEN_RED
         call    ui_text
         ld      hl,str_retry
-        ld      c,80
+        ld      c,76
+        ld      b,PEN_WHITE
+        call    ui_text
+        ld      hl,str_go           ; ...and which go this was, of five
+        ld      c,#8A
+        ld      b,PEN_WHITE
+        call    ui_text
+        ld      a,(tries)
+        ld      c,150
+        ld      b,PEN_YELLOW
+        jp      ui_num1
+uc_over:
+        ld      hl,str_over
+        ld      c,8
+        ld      b,PEN_RED
+        call    ui_text
+        ld      hl,str_menu
+        ld      c,72
         ld      b,PEN_WHITE
         jp      ui_text
 
@@ -145,6 +172,103 @@ un_tens_done:
 ui_num1:
         call    ui_glyph
         ret
+
+; ----------------------------------------------------------------------------
+;  ui_num6 — HL = a 24-bit value, C = x, B = pen. Six digits, zero padded.
+;
+;  Binary to decimal without a division routine: subtract a power of ten
+;  until it will not go, and the number of times IS the digit. Six digits
+;  is six passes over five constants, which happens when the strip is
+;  recomposed and not per frame, so the loop costs nothing worth saving.
+; ----------------------------------------------------------------------------
+ui_num6:
+;  B IS THE PEN, and it stays the pen. Using it as the djnz counter as well
+;  drew the six digits in pens six down to one — the last of them in pen 1,
+;  which is BLACK on a black strip, so the score silently lost its units
+;  column.
+        push    bc
+        call    num6
+        pop     bc
+        ld      hl,num6_buf
+        ld      a,6
+        ld      (un6_n),a
+un6_out:
+        push    bc
+        push    hl
+        ld      a,(hl)
+        call    ui_glyph
+        pop     hl
+        pop     bc
+        inc     hl
+        ld      a,c
+        add     a,FONT_W+1
+        ld      c,a
+        push    hl
+        ld      hl,un6_n
+        dec     (hl)
+        pop     hl
+        jr      nz,un6_out
+        ret
+
+; ----------------------------------------------------------------------------
+;  num6 — HL = a 24-bit value -> (num6_buf), six digit glyphs and an end
+;  marker, so it can go to ui_glyph or straight to title_text.
+; ----------------------------------------------------------------------------
+num6:
+        ld      e,(hl)              ; a private copy: this destroys it
+        inc     hl
+        ld      d,(hl)
+        inc     hl
+        ld      a,(hl)
+        ld      (un6_v),de
+        ld      (un6_v+2),a
+        ld      ix,pow10_tab
+        ld      iy,num6_buf
+        ld      a,6
+        ld      (un6_n),a
+un6_dig:
+        xor     a
+        ld      (un6_d),a
+un6_sub:
+        ld      hl,(un6_v)
+        ld      e,(ix+0)
+        ld      d,(ix+1)
+        or      a
+        sbc     hl,de
+        ld      a,(un6_v+2)
+        sbc     a,(ix+2)
+        jr      c,un6_done          ; it will not go: the digit is done
+        ld      (un6_v),hl
+        ld      (un6_v+2),a
+        ld      hl,un6_d
+        inc     (hl)
+        jr      un6_sub
+un6_done:
+        ld      a,(un6_d)
+        ld      (iy+0),a
+        inc     iy
+        ld      de,3
+        add     ix,de
+        ld      hl,un6_n
+        dec     (hl)
+        jr      nz,un6_dig
+        ret
+
+num6_buf:       ds      6
+                db      GL_END
+
+;  100000, 10000, 1000, 100, 10, 1 — three bytes each, low first
+pow10_tab:
+        db      #A0,#86,#01
+        db      #10,#27,#00
+        db      #E8,#03,#00
+        db      #64,#00,#00
+        db      #0A,#00,#00
+        db      #01,#00,#00
+
+un6_v:          db      0,0,0
+un6_d:          db      0
+un6_n:          db      0
 
 ; ----------------------------------------------------------------------------
 ;  ui_glyph — A = glyph index, C = x (always even), B = pen.

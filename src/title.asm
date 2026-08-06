@@ -65,8 +65,19 @@ title_show:
         ld      a,PEN_WHITE
         ld      (tb_pen2),a
         ld      hl,str_start
-        ld      de,#2692            ; D = x 38, E = y 146
+        ld      de,#268C            ; D = x 38, E = y 140
         call    title_text
+        ld      a,PEN_YELLOW        ; HI SCORE nnnnnn, centred
+        ld      (tb_pen2),a
+        ld      hl,str_hi
+        ld      de,#2280            ; D = x 34, E = y 128
+        call    title_text
+        ld      hl,hi_score
+        call    num6
+        ld      hl,num6_buf
+        ld      de,#5880            ; D = x 88, E = y 128
+        call    title_text
+
         ld      a,PEN_CYAN
         ld      (tb_pen2),a
         ld      hl,str_credit
@@ -75,6 +86,8 @@ title_show:
 
         ld      a,PEN_GREEN
         call    title_mode
+        ld      a,PEN_CYAN
+        call    title_diff
         call    title_creatures
         call    title_music
         ld      a,GS_TITLE
@@ -243,8 +256,58 @@ title_mode:
         ld      hl,str_thpig
 tm_go:
         pop     af
-        ld      de,#209E            ; D = x 32, E = y 158
+        ld      de,#2098            ; D = x 32, E = y 152
         jp      title_text
+
+; ----------------------------------------------------------------------------
+;  title_diff — A = pen. The line that says how many goes a fort allows.
+;  Rubbed out the same way title_mode is: repaint it in PEN_BLACK, which
+;  unpaints exactly the pixels it painted. The three names are different
+;  lengths, so anything that erased a fixed box would be wrong for two of
+;  them.
+; ----------------------------------------------------------------------------
+title_diff:
+        ld      (tb_pen2),a
+        push    af
+        ld      a,1
+        ld      (tb_scale),a
+        ld      a,(difficulty)
+        ld      hl,str_easy
+        or      a
+        jr      z,td_go
+        ld      hl,str_med
+        dec     a
+        jr      z,td_go
+        ld      hl,str_hard
+td_go:
+        pop     af
+        ld      de,#20A2            ; D = x 32, E = y 162
+        jp      title_text
+
+; ----------------------------------------------------------------------------
+;  over_show — GAME OVER, big and two-tone, over the middle of the window.
+;
+;  title_text keeps its x in a single byte, so this can only be drawn with
+;  the camera at the left of the world — which is where the game puts it
+;  when the last bird is gone, so that the player sees the fort that beat
+;  them from the place they were throwing at it.
+; ----------------------------------------------------------------------------
+over_show:
+        ld      a,TB_SCALE_BIG
+        ld      (tb_scale),a
+        ld      a,PEN_YELLOW
+        ld      (tb_pen2),a
+        ld      a,PEN_RED
+        ld      hl,str_game         ; 4 glyphs x 18 = 69 px, centred in 160
+        ld      de,#2D46            ; D = x 45, E = y 70
+        call    title_text
+        ld      a,PEN_RED
+        ld      hl,str_overb
+        ld      de,#2D5E            ; D = x 45, E = y 94
+        call    title_text
+        ld      a,1
+        ld      (tb_scale),a
+        ret
 
 ; ----------------------------------------------------------------------------
 ;  title_creatures — the six birds, then the three pigs, in the pose the
@@ -323,6 +386,23 @@ gu_title:
         ld      a,PEN_GREEN         ; ...and in with the new
         call    title_mode
 tu_key:
+        ld      a,(kbd_edge+KEY_DOWN_ROW)
+        and     KEY_DOWN_MASK
+        jr      z,tu_start
+        ld      a,PEN_BLACK         ; same out-and-in as the mode line
+        call    title_diff
+        ld      a,(difficulty)
+        inc     a
+        cp      DIFF_COUNT
+        jr      c,tu_diff
+        xor     a
+tu_diff:
+        ld      (difficulty),a
+        ld      a,1                 ; it rides to the disc with the score
+        ld      (hi_dirty),a
+        ld      a,PEN_CYAN
+        call    title_diff
+tu_start:
         ld      a,(kbd_edge+KEY_SPACE_ROW)
         and     KEY_SPACE_MASK
         ret     z
