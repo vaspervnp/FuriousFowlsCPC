@@ -96,22 +96,34 @@ uc_clear:
         ld      b,PEN_WHITE
         jp      ui_text
 uc_fail:
+;  It says what actually ran out. In the reversed mode the thing in the
+;  pouch is a pig, and a banner that mourns birds is simply wrong — the
+;  same reason the two counters swap their labels.
         ld      hl,str_fail
+        ld      a,(swap_mode)
+        or      a
+        jr      z,uc_faillbl
+        ld      hl,str_failp
+uc_faillbl:
+;  Twelve glyphs of banner, four of counter and five of prompt is
+;  twenty-one of the twenty-six the strip holds. SPACE - RETRY is thirteen
+;  on its own and does not fit beside the counter — it ran straight over
+;  the top of it and the line read SPACE - REGO1.
         ld      c,2
         ld      b,PEN_RED
         call    ui_text
-        ld      hl,str_retry
-        ld      c,76
-        ld      b,PEN_WHITE
-        call    ui_text
-        ld      hl,str_go           ; ...and which go this was, of five
-        ld      c,#8A
+        ld      hl,str_go           ; which go this was, of however many
+        ld      c,86                ; the difficulty allows
         ld      b,PEN_WHITE
         call    ui_text
         ld      a,(tries)
-        ld      c,150
+        ld      c,104
         ld      b,PEN_YELLOW
-        jp      ui_num1
+        call    ui_num1
+        ld      hl,str_space
+        ld      c,122
+        ld      b,PEN_WHITE
+        jp      ui_text
 uc_over:
         ld      hl,str_over
         ld      c,8
