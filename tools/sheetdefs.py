@@ -80,6 +80,14 @@ BLOCK_PIECES = [
     ('pillar',    28,  True),   # 7  a bare stick, the slenderest upright
     ('slab',      20,  False),  # 8  a shelf one plank deep, snaps easily
     ('crate',     18,  False),  # 9  hollow box — the weak point of a fort
+    #  Six more, and that is the lot: the level format packs the piece into
+    #  FOUR BITS, so sixteen is the ceiling and this is it.
+    ('rope_h',     8,  False),  # 10 rope strung across a gap
+    ('rope_v',     8,  True),   # 11 ...and hanging down one
+    ('pulley',    22,  False),  # 12 a wheel on a bracket, with rope over it
+    ('tnt',       10,  False),  # 13 explosive crate — see tnt_blast
+    ('glass',      6,  False),  # 14 a pane. The most fragile thing here
+    ('stone',     90,  False),  # 15 a dressed block. The least
 ]
 
 #  ONE SET. Stone, ice, sand and metal are gone: five sets of ten pieces

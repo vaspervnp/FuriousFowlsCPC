@@ -47,14 +47,11 @@ again — thinner than the old `thin=True`, which already halved them.
 
 ## 3. Forts that get more complex every level
 
-Today the shape comes from `step = (n-1) % 8`, so the eighth level and
-the sixteenth are built the same way and only the material differs. The
-complexity should **grow with n** instead of cycling: more structures,
-more storeys, more interlocking, all the way to level forty.
+**Status: done.** See the notes at the bottom.
 
-`MAX_BLOCKS` is 48 and the grid is 20x10, so there is a ceiling; the
-generator already trims from the top down when a fort overflows, and that
-trimming should stay honest rather than silently dropping the roof.
+The shape used to come from `step = (n-1) % 8`, so the eighth level and the
+sixteenth were built the same way and only the material differed. The
+complexity should **grow with n** instead of cycling.
 
 ---
 
@@ -210,3 +207,110 @@ collapse took longer, and the screenshot landed in the middle of a sweep
 that had always been there. Checking out the previous commit and changing
 one word in one level file is what settled it — and that is the check to
 run first next time, not last.
+
+---
+
+## Notes on the six new pieces
+
+Asked for: rope (horizontal and vertical), a pulley, and whatever else
+Angry Birds has that a level can use. Added six, and **that is the lot** —
+the level format packs the piece into four bits, so sixteen is the ceiling
+and we are now standing on it.
+
+| piece | char | hp | what it does |
+|---|---|---|---|
+| `rope_h` | `-` | 8 | a run merges into ONE beam, so it snaps rather than fraying |
+| `rope_v` | `|` | 8 | hangs; marked `tall`, so it goes over rather than sliding |
+| `pulley` | `o` | 22 | a wheel on a bracket |
+| `tnt` | `T` | 10 | **explodes** — see below |
+| `glass` | `g` | 6 | the most fragile thing in the game: the cell worth aiming at |
+| `stone` | `S` | 90 | the least: what stops the cheap ground-floor shot |
+
+Losing the material sets in item 2 did not have to mean losing every
+material. Glass and stone are PIECES now, so a level can put a pane and a
+dressed block into a timber fort instead of being cast wholesale in one
+substance — which is more useful than five sets ever were, and costs 100
+bytes instead of 2000.
+
+**Rope is honest about what it is.** Nothing in this engine swings, so a
+rope is a beam with almost no hit points. What makes it worth having is
+what you hang off it: `s_deadfall` is two posts, a rope between them and
+two dressed stones sitting on the rope, with a pig underneath. The shot is
+not "knock the building over", it is "cut that one cell".
+
+### TNT
+
+`tnt_blast` in `blocks.asm`. Everything within two cells takes 200 damage,
+which is more than any piece can hold, and pigs in it die outright.
+
+Two things had to be got right:
+
+* **Throw, do not merely drop.** Nothing is ever removed from this engine.
+  A piece knocked into `BS_FALL` that still has something under it falls
+  zero cells and sits exactly where it was — so the first version dealt
+  enormous damage and looked like it had done nothing at all. Each victim
+  now gets `BLK_SHOVE` set away from the charge first, and *away* is what
+  an explosion means.
+* **A spent charge becomes a crate.** Same reason: the block is still
+  there afterwards, and leaving it a charge means the next bird sets off
+  the same explosion again. It is in `BS_FALL` when we change it, so the
+  settle sweep redraws it that frame, and a crate is the same ten by ten
+  footprint so nothing is left showing.
+
+Chains work — a second charge inside the radius is still `BS_REST`, so it
+goes off too. That is a recursive call on a machine with 128 bytes of
+stack, so `TNT_CHAIN` bounds it at three: past that a charge merely falls,
+and the player sees a chain that stops rather than a machine that does.
+
+---
+
+## Notes on 3, after doing it
+
+`grade` climbs 0..7 across the forty and decides **how much** is built;
+`shape` still rotates 0..7 but only decides **which** shapes. So:
+
+* grade 0 — one structure, one pig. Level one is a hut.
+* grade 1 — an outbuilding as well
+* grade 2 — a charge buried in the main fort, and an armoured pig above it
+* grade 3 — a pane of glass where the fort is weakest
+* grade 4 — a third structure: a derrick, a deadfall or a hut
+* grade 5 — a second charge, and a king
+* grade 6 — a stone footing, and the citadel appears
+* grade 7 — all of it
+
+The world is 32 columns and the forts now live in three zones that never
+overlap: `8..14` the outbuilding, `15..22` the main fort, `24..30` the
+annex. `ZONE_GAP` at column 22 is where a stray pig goes, because pigs win
+the cell they stand in and a pig placed on a structure's leg is a
+structure that falls over before the player has taken a shot.
+
+`MAX_BLOCKS` is 64, up from 48. Ten-pixel cells need more of them.
+
+**A beam is judged at its ENDS, and two structures had forgotten that.**
+The manor's loft floor and the citadel's upper floor both spanned the full
+width of the building while their posts were set in one cell from either
+side — overhang both ends and the beam is a free fall, so both buildings
+were leaning before the player had taken a shot. Both floors now end ON
+their posts. The citadel's rope walk had the same fault and now ends on
+the two arches.
+
+**Scenery had to move.** Three zones of building leave only two gaps of
+bare ground: x 40..80 and x 208..240. Both are 32 px, which is one cell,
+so the 64-px rock and boulder go unused by the default forty — still there
+for a hand-built level with room for them.
+
+### And a note on measuring, again
+
+Two of the three hours here went into "the TNT does not explode". It did.
+`tnt_depth` reached 2, so it had even chained. What had actually happened
+is that my scripted shot was falling short of the fort, and then that the
+blast was invisible for the reason above.
+
+Worse: I wrote a watcher that ran the emulator in 120-tick slices instead
+of whole raster slices, and it reported the blocks never moving in a frame
+where the screenshot plainly shows them thrown across the screen. The
+screenshots were right and the watcher was wrong. **That is the fifth
+measurement tool in this project to blame the game for its own bug.** The
+rule that keeps earning its keep: before believing a tool that says
+"nothing happened", make it say "something happened" on a case where
+something demonstrably did.

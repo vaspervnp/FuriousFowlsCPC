@@ -424,7 +424,71 @@ def draw_block(piece, pens):
         rect(c, w - 2, 1, w - 2, h - 2, dark)
         for i in range(2, h - 2):            # a diagonal brace across it
             put(c, 1 + (i - 2) * (w - 4) // (h - 5), i, dark)
+
+    #  The six that are not timber bring their own colours. Losing the
+    #  material sets did not have to mean losing every material: a pane of
+    #  glass and a dressed stone are PIECES now, so a level can mix them
+    #  into a timber fort instead of being cast wholesale in one substance.
+    elif piece == 'rope_h':                  # laid fibre, strung across
+        rope(c, True)
+    elif piece == 'rope_v':                  # ...and hanging down
+        rope(c, False)
+    elif piece == 'pulley':
+        ellipse(c, 4.5, 4.5, 4, 4, ROPE_D)   # the wheel, rim and all
+        ellipse(c, 4.5, 4.5, 3, 3, IRON)
+        ellipse(c, 4.5, 4.5, 1, 1, ROPE_D)   # ...on its axle
+        rect(c, 0, 0, w - 1, 0, ROPE_L)      # the bracket it swings from
+        rect(c, 4, 0, 5, 1, ROPE_D)
+        for y in range(1, h):                # and the rope over it
+            put(c, 0, y, ROPE_L)
+            put(c, w - 1, y, ROPE_L)
+    elif piece == 'tnt':
+        rect(c, 1, 2, w - 2, h - 2, TNT)
+        rect(c, 1, 2, w - 2, 2, TNT_L)
+        rect(c, 1, h - 2, w - 2, h - 2, BLACK)
+        rect(c, 1, 4, w - 2, 4, BLACK)       # the band round the middle...
+        rect(c, 1, 6, w - 2, 6, BLACK)
+        rect(c, 5, 0, 5, 1, ROPE_D)          # ...and the fuse, lit
+        put(c, 6, 0, SPARK)
+    elif piece == 'glass':                   # a pane, and it shows the sky
+        rect(c, 1, 1, w - 2, h - 2, GLASS)
+        rect(c, 3, 3, 4, h - 4, GLASS_L)     # one long highlight, no more:
+        put(c, 6, 3, GLASS_L)                # glass is what you see THROUGH
+        rect(c, 1, 1, w - 2, 1, GLASS_L)
+        rect(c, 1, h - 2, w - 2, h - 2, GLASS_D)
+    elif piece == 'stone':                   # dressed, and the toughest
+        rect(c, 0, 1, w - 1, h - 2, IRON)
+        rect(c, 0, 1, w - 1, 1, STONE_L)
+        rect(c, 0, h - 2, w - 1, h - 2, BLACK)
+        for y in (4, 7):                     # tooled courses, offset
+            rect(c, 0, y, w - 1, y, BLACK)
+        for i, y in enumerate((2, 5, 8)):
+            for x in range(1 + 4 * (i % 2), w, 5):
+                put(c, x, y, BLACK)
     return c
+
+
+#  Pens for the six pieces that are not timber.
+ROPE_L, ROPE_D = 13, 11                      # hemp, and its shadow
+IRON, STONE_L = 10, 2                        # dressed stone / a pulley rim
+TNT, TNT_L, SPARK = 3, 12, 5                 # red crate, lit fuse
+GLASS, GLASS_L, GLASS_D = 8, 2, 14
+
+
+def rope(c, horizontal):
+    """Laid fibre: two strands with the twist alternating along it. On a
+    Mode 0 pixel a two-pixel rope is as thin as anything can be and still
+    be two things, which is what makes it read as twisted rather than as a
+    wire."""
+    w, h = BLOCK_W, BLOCK_H
+    for i in range(w if horizontal else h):
+        a, b = (ROPE_L, ROPE_D) if (i // 2) % 2 else (ROPE_D, ROPE_L)
+        if horizontal:
+            put(c, i, 4, a)
+            put(c, i, 5, b)
+        else:
+            put(c, 4, i, a)
+            put(c, 5, i, b)
 
 
 # ---------------------------------------------------------------------------

@@ -21,8 +21,8 @@
 ;                 into the stack — the assert in main.asm catches it.
 ;    #3F80-#3FFF  stack (grows down from #4000)
 ;    #4000-#87FF  code, scenery RLE, level records, tables
-;    #8800-#89FF  block art, 10 pieces x 50 B                 (500)
-;    #8A00-#8B8F  rot_map   : the four tilt maps              (400)
+;    #8800-#8B1F  block art, 16 pieces x 50 B                 (800)
+;    #8C00-#8D8F  rot_map   : the four tilt maps              (400)
 ;    #9E00-#BFFF  game state
 ;    #C000-#FFFF  video RAM
 ;
@@ -69,15 +69,16 @@ NP2NIB                  equ #0300
 CREATURE_ART            equ #0400
 CREATURE_STAGE          equ #C000   ; where the loader parks it
 
-;  ONE material set is 500 bytes of block art where five were 2500, so
-;  the art starts two kilobytes later and the code bank gets those two
-;  kilobytes — which is the scarce thing here, not the space above #8000.
+;  ONE material set is 800 bytes of block art where five sets of ten
+;  pieces were 2500, so the art starts two kilobytes later and the code
+;  bank gets those two kilobytes — the scarce thing here is code space,
+;  not the space above #8000.
 BLOCK_ART               equ #8800
 ;  The tilt maps are read once per level load and never written. They
 ;  used to sit in the code bank, where a kilobyte was a sixteenth of
 ;  everything; there is room for them here, behind the block art and
 ;  still inside the same loaded image.
-ROT_MAP_BASE            equ #8A00
+ROT_MAP_BASE            equ #8C00
 STATE_BASE              equ #9E00
 
 ; ---------------------------------------------------------------------------

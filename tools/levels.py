@@ -52,7 +52,7 @@ TOP_Y = GROUND_Y - GRID_H * CELL        # y of grid row 0 == 8
 WORLD_PX = GRID_W * CELL        # 320
 MAX_BIRDS = 6
 MAX_PIGS = 8
-MAX_BLOCKS = 48        # six sets of block art pushed the state block up
+MAX_BLOCKS = 64        # a fort of ten-pixel cells needs more of them
 MAX_SCENERY = 12       # 10 for the level, 2 reserved for the slingshot
 MAX_LEVEL_SCENERY = 10
 
@@ -60,12 +60,14 @@ DIR = 'assets/levels'
 BUILD = 'build'
 
 PIECE_CH = {'h': 0, 'v': 1, 'c': 2, 'b': 3, '/': 4,
-            '\\': 5, 'a': 6, 'i': 7, 's': 8, 'x': 9}
+            '\\': 5, 'a': 6, 'i': 7, 's': 8, 'x': 9,
+            '-': 10, '|': 11, 'o': 12, 'T': 13, 'g': 14, 'S': 15}
 
 #  Pieces that are PLANKS: a run of them side by side is one rigid beam,
 #  not a row of independent cubes. That is what lets a lintel tip over the
-#  pillar it still has instead of dissolving into its cells.
-BEAM_CH = set('hs')
+#  pillar it still has instead of dissolving into its cells — and it is
+#  also what makes a rope a rope rather than a row of knots.
+BEAM_CH = set('hs-')
 MAX_BEAM = 8            # the length field is three bits
 CH_PIECE = {v: k for k, v in PIECE_CH.items()}
 PIG_CH = {'p': 0, 'P': 1, 'K': 2}
@@ -84,10 +86,30 @@ PIG_NAMES = [p[0] for p in PIGS]
 
 
 # ===========================================================================
-#  The default forty. Each is a couple of structures on the right-hand
-#  side of the world, with the slingshot on the left; they get taller,
-#  wider and better defended as the numbers go up.
+#  The default forty.
+#
+#  Complexity GROWS with the level number; it does not cycle. The old
+#  generator picked a shape with (n-1) % 8, so the eighth fort and the
+#  sixteenth were built identically and only the material told them apart —
+#  and once there is one material, nothing did. Here `grade` climbs from 0
+#  to 7 across the forty and decides how MUCH is built: how many
+#  structures, how tall the tallest, whether there is a charge buried in
+#  it, whether the base is stone. `shape` still rotates, but it only
+#  decides WHICH shapes, for variety within a grade.
+#
+#  The world is 32 columns. The sling stands at column 2, so the forts
+#  live in three zones that never overlap:
+#
+#      cols  8..14   the outbuilding
+#      cols 15..22   the main fort
+#      cols 24..30   the annex
 # ===========================================================================
+ZONE_OUT, ZONE_MAIN, ZONE_ANNEX = 8, 15, 24
+ZONE_GAP = 22           # nothing is ever built here, so a stray pig can go
+                        # in it without knocking a leg out from under a
+                        # structure — see the "pigs win" rule below
+
+
 def s_tower(col, floors, piece_wall='v', piece_floor='h'):
     """A hollow tower `floors` high and four cells wide, braced across the
     middle of every storey above the first. The bracing is what turns it
@@ -145,7 +167,10 @@ def s_manor(col):
         out += [('i', col + dx, GRID_H - 1), ('i', col + dx, GRID_H - 2)]
     out += [('h', col + dx, GRID_H - 3) for dx in range(5)]
     out += [('i', col + 1, GRID_H - 4), ('i', col + 3, GRID_H - 4)]
-    out += [('h', col + dx, GRID_H - 5) for dx in range(5)]
+    #  The loft floor ends ON its two posts. A beam is judged at its ENDS,
+    #  so a floor that overhangs both of them is a free fall — and the
+    #  manor stood there leaning before the player had taken a shot.
+    out += [('h', col + dx, GRID_H - 5) for dx in range(1, 4)]
     out += [('/', col + 1, GRID_H - 6), ('\\', col + 3, GRID_H - 6)]
     return out
 
@@ -165,8 +190,8 @@ def s_gatehouse(col):
 
 
 def s_keep(col):
-    """A little castle, now with a storey on it: an arched gateway at the
-    bottom, a floor over that, an upper chamber, and crenellations."""
+    """A little castle: an arched gateway at the bottom, a floor over that,
+    an upper chamber, and crenellations."""
     return [('b', col, GRID_H - 1), ('b', col, GRID_H - 2),
             ('b', col + 3, GRID_H - 1), ('b', col + 3, GRID_H - 2),
             ('h', col, GRID_H - 3), ('h', col + 1, GRID_H - 3),
@@ -178,80 +203,170 @@ def s_keep(col):
             ('c', col, GRID_H - 6), ('c', col + 2, GRID_H - 6)]
 
 
-def s_stack(col, n):
-    return [('x', col, GRID_H - 1 - i) for i in range(n)]
+def s_derrick(col):
+    """A mast with a pulley at the top and a rope down the side of it
+    carrying two dressed stones. Nothing in this engine swings, so it is
+    not a crane — but the rope snaps for almost nothing and what it is
+    holding up is the heaviest piece in the game, so the shot that cuts it
+    is worth finding."""
+    return [('i', col, GRID_H - 1), ('i', col, GRID_H - 2),
+            ('i', col, GRID_H - 3), ('i', col, GRID_H - 4),
+            ('o', col + 1, GRID_H - 5),
+            ('|', col + 1, GRID_H - 4), ('|', col + 1, GRID_H - 3),
+            ('S', col + 1, GRID_H - 2), ('S', col + 1, GRID_H - 1)]
+
+
+def s_citadel(col):
+    """The biggest thing the generator builds: a stone base, two storeys of
+    timber over it, a glazed upper chamber and a rope walk across the top.
+    Seven wide and seven tall, which is most of a screen."""
+    out = []
+    for dx in (0, 6):
+        out += [('S', col + dx, GRID_H - 1), ('S', col + dx, GRID_H - 2)]
+    out += [('i', col + 3, GRID_H - 1), ('i', col + 3, GRID_H - 2)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(7)]
+    out += [('i', col + 1, GRID_H - 4), ('i', col + 5, GRID_H - 4)]
+    out += [('g', col + 3, GRID_H - 4)]
+    out += [('h', col + dx, GRID_H - 5) for dx in range(1, 6)]
+    out += [('a', col + 2, GRID_H - 6), ('a', col + 4, GRID_H - 6)]
+    #  The rope walk ends ON the two arches, not past them. A beam is
+    #  judged at its ENDS: overhang both and it is a free fall, and the
+    #  walk collapsed into a tangle before the player had taken a shot.
+    out += [('-', col + dx, GRID_H - 7) for dx in range(2, 5)]
+    return out
+
+
+def s_deadfall(col):
+    """Two posts, a ROPE strung between them, and two dressed stones
+    sitting on the rope. The pig stands underneath.
+
+    This is what a rope is for in a grid engine. It has almost no hit
+    points, a horizontal run merges into one rigid beam, and the heaviest
+    piece in the game is resting on it — so the shot is not "knock the
+    building over", it is "cut that one cell", and the building does the
+    rest."""
+    return [('i', col, GRID_H - 1), ('i', col, GRID_H - 2),
+            ('i', col + 3, GRID_H - 1), ('i', col + 3, GRID_H - 2),
+            ('i', col, GRID_H - 3), ('i', col + 3, GRID_H - 3),
+            ('-', col, GRID_H - 4), ('-', col + 1, GRID_H - 4),
+            ('-', col + 2, GRID_H - 4), ('-', col + 3, GRID_H - 4),
+            ('S', col + 1, GRID_H - 5), ('S', col + 2, GRID_H - 5)]
+
+
+def s_stack(col, n, ch='x'):
+    return [(ch, col, GRID_H - 1 - i) for i in range(n)]
+
+
+#  The eight shapes, in the order the rotation meets them. Each takes a
+#  column and the grade; the ones that can grow, grow with it.
+SHAPES = [
+    lambda col, g: s_hut(col),
+    lambda col, g: s_bridge(col, 3 + g // 4),
+    lambda col, g: s_pyramid(col, 3 + g // 3),
+    lambda col, g: s_tower(col, 1 + g // 2),
+    lambda col, g: s_gatehouse(col),
+    lambda col, g: s_keep(col),
+    lambda col, g: s_manor(col),
+    lambda col, g: s_citadel(col) if g >= 6 else s_keep(col),
+]
 
 
 def default_level(n):
     """n is 1..40."""
-    step = (n - 1) % 8                          # every fort shape gets a turn
-    mset = SET_NAMES[0]
+    grade = (n - 1) * 8 // LEVELS       # 0..7: how much gets built
+    shape = (n - 1) % 8                 # ...and which shapes, for variety
 
-    #  Two structures from the very first level, three once the birds get
-    #  numerous. A single hut is a target; a hut with an outbuilding is a
-    #  PROBLEM, because knocking one over is supposed to help with the
-    #  other. The cell budget is MAX_BLOCKS, so the combinations below are
-    #  chosen to stay inside it — assert_fits() at the end is the guard.
     blocks, pigs = [], []
-    if step == 0:
-        blocks += s_hut(14) + s_stack(10, 3)
-        pigs += [('p', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
-    elif step == 1:
-        blocks += s_manor(13)
-        pigs += [('p', 14, GRID_H - 1), ('p', 16, GRID_H - 1)]
-    elif step == 2:
-        blocks += s_tower(14, 2) + s_hut(9)
-        pigs += [('p', 15, GRID_H - 1), ('p', 10, GRID_H - 1)]
-    elif step == 3:
-        blocks += s_gatehouse(13) + s_stack(10, 2)
-        pigs += [('P', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
-    elif step == 4:
-        blocks += s_pyramid(13, 4) + s_hut(8)
-        pigs += [('p', 18, GRID_H - 1), ('p', 9, GRID_H - 1)]
-    elif step == 5:
-        blocks += s_bridge(12, 4) + s_stack(18, 3)
-        pigs += [('p', 14, GRID_H - 1), ('P', 16, GRID_H - 1)]
-    elif step == 6:
-        blocks += s_keep(14) + s_stack(10, 2)
-        pigs += [('P', 15, GRID_H - 1), ('p', 11, GRID_H - 1)]
-    else:
-        blocks += s_keep(15) + s_hut(9)
-        pigs += [('K', 16, GRID_H - 1), ('p', 10, GRID_H - 1)]
-        if n > 20:
-            blocks += s_stack(13, 3)
-            pigs.append(('P', 13, GRID_H - 4))
 
-    # the deeper you get, the more it is worth reinforcing the ground floor
-    if n > 12:
-        blocks += [('c', 19, GRID_H - 1), ('c', 19, GRID_H - 2)]
-    if n > 24:
-        blocks += [('b', 8, GRID_H - 1), ('h', 8, GRID_H - 2)]
+    #  The main fort always. An outbuilding from grade 1, an annex from
+    #  grade 4 — so level three is a fort and a shed, and level thirty is
+    #  three separate problems that lean on each other.
+    blocks += SHAPES[shape](ZONE_MAIN, grade)
+    pigs += [('p', ZONE_MAIN + 1, GRID_H - 1)]
+    if grade >= 1:
+        blocks += SHAPES[(shape + 3) % 8](ZONE_OUT, max(0, grade - 2))
+        pigs += [('p', ZONE_OUT + 1, GRID_H - 1)]
+    if grade >= 4:
+        annex, pcol = ((s_derrick, 3), (s_deadfall, 1),
+                       (s_hut, 1))[shape % 3]
+        blocks += annex(ZONE_ANNEX)
+        pigs += [('p', ZONE_ANNEX + pcol, GRID_H - 1)]
 
-    #  A fort that overflows the block table would be silently truncated at
-    #  load, which looks like a level that was designed wrong rather than
-    #  one that was built wrong. Trim from the top down, where a missing
-    #  cell costs the least.
+    #  A CHARGE, buried where it will take the fort with it. From grade 2:
+    #  a player who has not yet worked out what a fort does should not be
+    #  handed the answer on level two.
+    if grade >= 2:
+        blocks += [('T', ZONE_MAIN + 2, GRID_H - 1)]
+    if grade >= 5:
+        blocks += [('T', ZONE_OUT + 2, GRID_H - 2)]
+
+    #  Glass is a weak point on purpose — the cell worth aiming at. Stone
+    #  is the opposite, and it goes at the foot of the main fort where it
+    #  stops the cheap ground-floor shot working for ever.
+    if grade >= 3:
+        blocks += [('g', ZONE_MAIN + 4, GRID_H - 2)]
+    if grade >= 6:
+        blocks += [('S', ZONE_MAIN - 1, GRID_H - 1),
+                   ('S', ZONE_MAIN - 1, GRID_H - 2)]
+
+    #  The pigs the fort is FOR. Armour and a crown arrive with the grade,
+    #  and the late ones stand on TOP of things rather than under them,
+    #  which is a different shot.
+    if grade >= 2:
+        pigs += [('P', ZONE_MAIN + 2, GRID_H - 4)]
+    if grade >= 5:
+        pigs += [('K', ZONE_MAIN + 1, GRID_H - 7)]
+    if grade >= 6:
+        pigs += [('P', ZONE_GAP, GRID_H - 1)]
+
+    #  A cell may only hold one thing, and PIGS WIN. A fort with a block
+    #  where its pig should be is a fort with one fewer pig, which is a
+    #  level that cannot be finished.
+    pigs = [pg for pg in pigs if 0 < pg[1] < GRID_W][:MAX_PIGS]
+    taken = set()
+    for _ch, cx, cy in pigs:
+        taken.add((cx, cy))
+        taken.add((cx, cy - 1))         # a pig is two cells tall
     seen = {}
     for ch, cx, cy in blocks:
-        seen[(cx, cy)] = ch
+        if 0 <= cx < GRID_W and 0 <= cy < GRID_H and (cx, cy) not in taken:
+            seen[(cx, cy)] = ch
     blocks = [(ch, cx, cy) for (cx, cy), ch in seen.items()]
-    if len(blocks) > MAX_BLOCKS:
+
+    #  A fort that overflows the block table would be silently truncated at
+    #  load, which looks like a level designed wrong rather than one built
+    #  wrong. Trim from the top down, where a missing cell costs least —
+    #  and SAY SO, because a roof that quietly went missing is exactly the
+    #  failure this trimming exists to prevent.
+    def objects(bs):
+        return len(merge_beams(bs, '<generated>'))
+    if objects(blocks) > MAX_BLOCKS:
         blocks.sort(key=lambda b: -b[2])
-        blocks = blocks[:MAX_BLOCKS]
+        dropped = 0
+        while objects(blocks) > MAX_BLOCKS:
+            blocks.pop()
+            dropped += 1
+        print('  level %02d: dropped %d cells from the top to fit %d objects'
+              % (n, dropped, MAX_BLOCKS))
 
     # birds: more of them, and a wider cast, as the forts get harder
-    n_birds = min(MAX_BIRDS, 3 + n // 10)
+    n_birds = min(MAX_BIRDS, 3 + n // 8)
     cast = BIRD_NAMES[:min(len(BIRD_NAMES), 2 + n // 7)]
     birds = [cast[i % len(cast)] for i in range(n_birds)]
 
+    #  Scenery is BACKGROUND — blocks draw over it — but a boulder behind a
+    #  timber fort still makes the fort hard to read, and three zones of
+    #  building leave only two gaps of bare ground: x 40..80, between the
+    #  slingshot and the outbuilding, and x 208..240, between the main fort
+    #  and the annex. Both are 32 px, which is one scenery cell. The
+    #  64-px-wide rock and boulder therefore go unused by the default
+    #  forty; they are still there for a hand-built level with room.
     scenery = [('cloud_a', 16, 10), ('cloud_b', 188, 26)]
+    scenery.append(('bush_a' if n % 3 else 'bush_b', 44, GROUND_Y - 64))
     if n % 5:
-        scenery.append(('tree_a' if n % 2 else 'tree_b', 248, GROUND_Y - 128))
-    scenery.append(('bush_a' if n % 3 else 'bush_b', 88, GROUND_Y - 64))
-    if n % 4 == 0:
-        scenery.append(('rock' if n % 8 else 'boulder', 140, GROUND_Y - 64))
+        scenery.append(('tree_a' if n % 2 else 'tree_b', 208, GROUND_Y - 128))
 
-    return dict(name='FORT %02d' % n, set=mset, sling=24, birds=birds,
+    return dict(name='FORT %02d' % n, set=SET_NAMES[0], sling=24, birds=birds,
                 scenery=scenery, blocks=blocks, pigs=pigs)
 
 

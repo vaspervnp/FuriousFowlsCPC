@@ -686,7 +686,139 @@ block_hit:
         ld      de,25
         add     hl,de
         ld      (score),hl
+        ld      a,(ix+BLK_PIECE)
+        cp      BLK_TNT
+        jp      nz,settle_ping
+        ; fall through
+
+; ============================================================================
+;  tnt_blast — IX = the crate that has just gone up.
+;
+;  Everything within TNT_R cells of it takes TNT_DMG, which is more than
+;  any piece in the game can hold, so a charge does not weaken a fort —
+;  it removes the part of it that was near the charge. Pigs in the blast
+;  die outright.
+;
+;  The crate is already in BS_FALL by the time we get here, which is what
+;  stops it detonating itself: block_hit turns away anything that is not
+;  BS_REST. A second crate inside the radius IS still at rest, so chains
+;  work — and that is a recursive call, on a machine with a hundred and
+;  twenty-eight bytes of stack. TNT_CHAIN bounds it: past that depth a
+;  crate merely falls, and the player sees a chain that stops rather than
+;  a machine that does.
+; ============================================================================
+TNT_R           equ 2               ; cells either way
+TNT_DMG         equ 200
+TNT_CHAIN       equ 3               ; deepest chain of sympathetic charges
+
+tnt_blast:
+        ld      a,(tnt_depth)
+        cp      TNT_CHAIN
+        ret     nc
+        inc     a
+        ld      (tnt_depth),a
+
+        ld      a,SND_CRASH
+        ld      b,2
+        call    snd_fx
+
+        ld      a,(ix+BLK_ROW)      ; the top-left corner of the square,
+        sub     TNT_R               ; clamped to the world
+        jr      nc,tb_row0
+        xor     a
+tb_row0:
+        ld      (tb_r0),a
+        ld      a,(ix+BLK_COL)
+        ld      (tb_scol),a         ; ...and the charge's own column, which
+        sub     TNT_R               ; is which way is AWAY
+        jr      nc,tb_col0
+        xor     a
+tb_col0:
+        ld      (tb_c0),a
+
+        ld      a,(tb_r0)
+        ld      (tb_row),a
+tb_rloop:
+        ld      a,TNT_R*2+1
+        ld      (tb_n),a
+        ld      a,(tb_c0)
+        ld      (tb_col),a
+tb_cloop:
+        ld      a,(tb_row)
+        cp      GRID_H
+        jr      nc,tb_rnext         ; past the bottom: so is every row after
+        ld      a,(tb_col)
+        cp      GRID_W
+        jr      nc,tb_rnext         ; past the right edge: on to the next row
+        ld      b,a
+        ld      a,(tb_row)
+        ld      c,a
+        push    ix
+        call    grid_at
+        ld      a,(hl)
+        cp      GRID_EMPTY
+        jr      z,tb_cnext
+        bit     7,a
+        jr      nz,tb_pig
+        ld      e,a
+        call    block_ptr
+;  THROW IT, do not merely drop it. Nothing is ever removed from this
+;  engine — a piece knocked into BS_FALL that still has something under it
+;  falls zero cells and sits exactly where it was, so a charge that only
+;  dealt damage looked like a charge that did nothing. Setting the shove
+;  first sends each victim one cell away from the crate, and away is what
+;  an explosion means.
+        ld      a,(tb_col)
+        ld      hl,tb_scol
+        cp      (hl)
+        ld      a,1
+        jr      nc,tb_shove
+        ld      a,#FF
+tb_shove:
+        ld      (ix+BLK_SHOVE),a
+        ld      a,TNT_DMG
+        call    block_hit
+        jr      tb_cnext
+tb_pig:
+        and     #7F
+        ld      e,a
+        call    pig_ptr
+        ld      a,TNT_DMG
+        call    pig_hit
+tb_cnext:
+        pop     ix
+        ld      hl,tb_col
+        inc     (hl)
+        ld      hl,tb_n
+        dec     (hl)
+        jr      nz,tb_cloop
+tb_rnext:
+        ld      hl,tb_row
+        inc     (hl)
+        ld      a,(hl)
+        ld      c,a
+        ld      a,(tb_r0)
+        add     a,TNT_R*2+1
+        cp      c
+        jr      nz,tb_rloop
+
+;  A SPENT CHARGE IS A CRATE. Nothing is removed from this engine, so the
+;  crate is still there; leaving it a charge means the next bird sets off
+;  the same explosion again. It is already in BS_FALL, so the settle sweep
+;  redraws it this frame — and a crate is exactly the same ten by ten
+;  footprint, so the new art covers the old with nothing left showing.
+        ld      (ix+BLK_PIECE),BLK_CRATE
+        ld      hl,tnt_depth
+        dec     (hl)
         jp      settle_ping
+
+tb_r0:          db      0
+tb_scol:        db      0
+tb_c0:          db      0
+tb_row:         db      0
+tb_col:         db      0
+tb_n:           db      0
+tnt_depth:      db      0
 
 ; ---- block_push — IX = block. One cell along BLK_SHOVE, if it will fit ----
 block_push:
