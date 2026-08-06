@@ -22,7 +22,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import artlib
-from sheetdefs import (BIRDS, PIGS, CREATURE_FRAMES, CREATURE_W, CREATURE_H,
+from sheetdefs import (DRAW_CREATURE_W, DRAW_CREATURE_H,
+                       DRAW_BLOCK_W, DRAW_BLOCK_H,
+                       BIRDS, PIGS, CREATURE_FRAMES, CREATURE_W, CREATURE_H,
                        CREATURE_COLS, BLOCK_PIECES, BLOCK_SETS, BLOCK_W,
                        BLOCK_H, BLOCK_COLS, SCENERY_CELLS, SCENERY_W,
                        SCENERY_H, SCENERY_COLS, SHEETS)
@@ -38,6 +40,32 @@ STONE, STONE2, SHADE = 10, 2, 14
 # ---------------------------------------------------------------------------
 def cell(w, h, pen=T):
     return [[pen] * w for _ in range(h)]
+
+
+def reduce_cell(c, dw, dh):
+    """Shrink a finished cell to dw x dh.
+
+    Pixel art does not survive averaging: a beak two pixels wide averages
+    into the body and disappears. So each destination pixel takes the
+    commonest pen in the source area it covers, and ANY ink beats the
+    background — a feature that is outnumbered still shows, which for a
+    sprite this small is the difference between an eye and a smudge.
+    """
+    sh, sw = len(c), len(c[0])
+    out = cell(dw, dh)
+    for dy in range(dh):
+        y0, y1 = dy * sh // dh, max(dy * sh // dh + 1, (dy + 1) * sh // dh)
+        for dx in range(dw):
+            x0, x1 = dx * sw // dw, max(dx * sw // dw + 1, (dx + 1) * sw // dw)
+            n = {}
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    p = c[y][x]
+                    n[p] = n.get(p, 0) + 1
+            ink = {p: k for p, k in n.items() if p != T}
+            src = ink or n
+            out[dy][dx] = max(src, key=lambda p: src[p])
+    return out
 
 
 def put(c, x, y, pen):
@@ -164,7 +192,7 @@ BIRD_POSE = {
 
 
 def draw_bird(body, belly, beak, brow, frame):
-    c = cell(CREATURE_W, CREATURE_H)
+    c = cell(DRAW_CREATURE_W, DRAW_CREATURE_H)
     cy, rx, ry = BIRD_POSE[frame]
 
     if frame == 'fly':                       # wings swept back behind it
@@ -241,7 +269,7 @@ PIG_POSE = {
 
 
 def draw_pig(body, belly, snout, gear, frame):
-    c = cell(CREATURE_W, CREATURE_H)
+    c = cell(DRAW_CREATURE_W, DRAW_CREATURE_H)
     cy, rx, ry = PIG_POSE[frame]
     top = cy - ry
 
@@ -593,7 +621,7 @@ def build_creatures():
     for _name, body, belly, snout, gear in PIGS:
         for f in CREATURE_FRAMES:
             cells.append(draw_pig(body, belly, snout, gear, f))
-    return cells
+    return [reduce_cell(c, CREATURE_W, CREATURE_H) for c in cells]
 
 
 def build_blocks():
@@ -601,7 +629,7 @@ def build_blocks():
     for _set, _tough, pens, thin in BLOCK_SETS:
         for piece, _hp, _tall in BLOCK_PIECES:
             cells.append(draw_block(piece, pens, thin))
-    return cells
+    return [reduce_cell(c, BLOCK_W, BLOCK_H) for c in cells]
 
 
 def build_scenery():

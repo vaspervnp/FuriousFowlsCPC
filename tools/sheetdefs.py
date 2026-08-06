@@ -48,7 +48,12 @@ PIGS = [
 ]
 
 CREATURE_NAMES = [b[0] for b in BIRDS] + [p[0] for p in PIGS]
-CREATURE_W, CREATURE_H = 16, 32
+#  Sprites are drawn at DRAW_* and reduced to these before they reach the
+#  sheet, so the art code keeps its comfortable coordinates and the game
+#  gets five eighths of them — the even fraction nearest two thirds, and
+#  even matters because a Mode 0 byte is two pixels wide.
+CREATURE_W, CREATURE_H = 10, 20
+DRAW_CREATURE_W, DRAW_CREATURE_H = 16, 32
 CREATURE_COUNT = len(CREATURE_NAMES) * len(CREATURE_FRAMES)
 CREATURE_COLS = len(CREATURE_FRAMES)          # one creature per sheet row
 
@@ -96,7 +101,8 @@ BLOCK_SETS = [
     ('metal',  220, (14, 2, 9, 9),   True),
 ]
 
-BLOCK_W, BLOCK_H = 16, 16
+BLOCK_W, BLOCK_H = 10, 10
+DRAW_BLOCK_W, DRAW_BLOCK_H = 16, 16
 BLOCK_COUNT = len(BLOCK_SETS) * len(BLOCK_PIECES)
 BLOCK_COLS = len(BLOCK_PIECES)                # one material set per sheet row
 

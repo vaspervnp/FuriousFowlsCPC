@@ -1,12 +1,12 @@
 # FORT 33 — edit freely, then run make.
-# grid is 20x10 cells of 16 px; the last map line sits on the ground.
+# grid is 32x16 cells of 10 px; the last map line sits on the ground.
 name    FORT 33
 set     metal
 sling   24
 birds   red yellow blue black white green
 scenery cloud_a 16 10 ; cloud_b 188 26 ; tree_a 248 40 ; bush_b 88 104
 map
-.............../\...
-..........x...hhhh..
-........h.x...i..i.c
-.Y......b.xp..ip.i.c
+.............../\...............
+..........x...hhhh..............
+........h.x...i..i.c............
+..Y.....b.xp..ip.i.c............

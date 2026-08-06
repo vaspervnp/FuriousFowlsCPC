@@ -115,12 +115,7 @@ pig_mark:
 pig_y:
         ld      a,(ix+ENT_ROW)
         dec     a
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; (row-1) * 16
+        call    cell_pix             ; (row-1) * CELL_PX
         ld      e,(ix+ENT_YOFF)
         ld      d,0
         add     hl,de
@@ -146,12 +141,24 @@ ca_test:
         ld      e,c
         ld      d,0
         add     hl,de               ; HL = frame number within the bank
-        ld      h,l                 ; * CR_FRAME_BYTES, which is 256
-        ld      l,0
+;  ...times CR_FRAME_BYTES. A ten by twenty frame is a hundred bytes, so
+;  this is no longer the free byte-swap that 256 was: 100n = 64n+32n+4n.
+        add     hl,hl
+        add     hl,hl               ; 4n
+        ld      b,h
+        ld      c,l
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl               ; 32n
+        ld      d,h
+        ld      e,l
+        add     hl,hl               ; 64n
+        add     hl,de               ; 96n
+        add     hl,bc               ; 100n
         ld      de,CREATURE_ART
         add     hl,de
         ret
-        assert  CR_FRAME_BYTES == 256
+        assert  CR_FRAME_BYTES == 100
 
 ; ---- pig_draw — IX = pig ----------------------------------------------------
 pig_draw:
@@ -164,12 +171,8 @@ pig_draw:
         ld      a,(ix+ENT_TYPE)
         call    art_for_creature
         ld      (sp_art),hl
-        ld      l,(ix+ENT_COL)
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
+        ld      a,(ix+ENT_COL)
+        call    cell_pix
         ld      (sp_x),hl
         call    pig_y
         ld      (sp_y),hl
@@ -224,9 +227,10 @@ pdr_test:
         ret     z
         cp      ES_DEAD
         ret     z
+        ld      c,CR_WIDTH
         ld      a,(ix+ENT_COL)
-        add     a,a
-        add     a,a
+        call    cell_cols
+        ld      a,(cc_col)
         ld      c,a
         ld      a,(rr_col0)
         ld      b,a
@@ -235,8 +239,9 @@ pdr_test:
         dec     a
         cp      c
         ret     c
-        ld      a,c
-        add     a,3
+        ld      a,(cc_n)
+        add     a,c
+        dec     a
         cp      b
         ret     c
         call    pig_y
@@ -273,11 +278,12 @@ pe_idx:
         ld      a,l
         ld      (pdr_skip),a
 
+        ld      c,CR_WIDTH
         ld      a,(ix+ENT_COL)
-        add     a,a
-        add     a,a
+        call    cell_cols
+        ld      a,(cc_col)
         ld      (rr_col0),a
-        ld      a,4
+        ld      a,(cc_n)
         ld      (rr_ncol),a
         call    pig_y
         ld      a,l

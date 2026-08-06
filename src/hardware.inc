@@ -85,7 +85,13 @@ STATE_BASE              equ #9E00
 SCREEN_BYTES_PER_LINE   equ 80      ; Mode 0: 160 px, 2 px per byte
 SCREEN_LINES            equ 200
 SCREEN_CHAR_ROWS        equ 25
-VIEW_CHARS              equ 40      ; visible width, in CRTC chars
+VIEW_CHARS              equ 40      ; visible width, in CRTC chars — and the
+                                    ; ring row stride, because the 6845
+                                    ; advances each char row by R1. Narrowing
+                                    ; it to 39 was tried and reverted: the
+                                    ; incoming column aliases the trailing
+                                    ; visible one for ANY R1, so it bought
+                                    ; four pixels of loss and nothing else.
 WORLD_CHARS             equ 80      ; world width, in CRTC chars
 CAM_MAX                 equ WORLD_CHARS-VIEW_CHARS
 CRTC_R12_BASE           equ #30     ; screen page #C000 (MA13..12 = 11)
@@ -198,7 +204,7 @@ POWER_RATE              equ 3       ; charge per frame while SPACE is held
 AIM_MIN                 equ 0       ; angle, in 1/256 turns
 AIM_MAX                 equ 72      ; ...just past 100 degrees
 AIM_RATE                equ 1
-BIRD_R                  equ 11      ; collision radius about the bird centre
+BIRD_R                  equ 7       ; collision radius about the bird centre
 BOUNCE_NUM              equ 3       ; keep 3/8 of the speed off a surface
 BOUNCE_DEN              equ 8
 REST_SPEED              equ 1       ; below this the bird has stopped

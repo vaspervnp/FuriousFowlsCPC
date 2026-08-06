@@ -43,8 +43,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sheetdefs import (BLOCK_PIECES, BLOCK_SETS, SCENERY_CELLS, BIRDS, PIGS)
 
 LEVELS = 40
-GRID_W, GRID_H = 20, 10
-CELL = 16                       # pixels per grid cell, both ways
+GRID_W, GRID_H = 32, 16
+CELL = 10                       # pixels per grid cell, both ways. 32x10 is
+                                # the same 320-pixel world as 20x16 was, and
+                                # 16 rows of 10 still starts at y=8.
 GROUND_Y = 168                  # world y of the top of the turf
 TOP_Y = GROUND_Y - GRID_H * CELL        # y of grid row 0 == 8
 WORLD_PX = GRID_W * CELL        # 320

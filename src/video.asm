@@ -49,11 +49,13 @@ crtc_next:
 
 crtc_table:
         db      63                  ; R0  horizontal total (chars-1)
-        db      40                  ; R1  horizontal displayed. NOTE: the
+        db      VIEW_CHARS          ; R1  horizontal displayed. NOTE: the
                                     ;     6845 advances each char row's
                                     ;     start by R1, so R1 IS the ring
-                                    ;     row stride — changing it skews
-                                    ;     the whole screen into stairs
+                                    ;     row stride — world_to_screen and
+                                    ;     gen_line_lut both take their row
+                                    ;     stride from here, and skew the
+                                    ;     screen into stairs if they drift
         db      46                  ; R2  hsync position
         db      #8E                 ; R3  vsync height / hsync width
         db      38                  ; R4  vertical total (char rows-1)

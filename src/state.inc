@@ -23,12 +23,13 @@ hud_buf         equ bg_template+COLBUF_SIZE ; the status strip, composed
 HUD_STRIDE      equ VIEW_CHARS*2            ; straight in MODE 0 so it can be
 HUD_SIZE        equ HUD_STRIDE*HUD_LINES    ; LDIR'd into the ring as-is
 
-;  What is under the bird. Rebuilding the scene beneath a 16x32 sprite is
-;  five columns of background every time it moves, which does not fit in a
-;  frame alongside the blit — so the pixels it covers are kept and put back
-;  instead. See shot.asm.
+;  What is under the bird. Rebuilding the scene beneath it is four columns
+;  of background every time it moves, which does not fit in a frame
+;  alongside the blit — so the pixels it covers are kept and put back
+;  instead. See shot.asm. spr_clip never hands back more than one sprite
+;  row, so the store is that wide and no wider.
 shot_back       equ hud_buf+HUD_SIZE
-SHOT_BACK_SIZE  equ 9*CR_HEIGHT
+SHOT_BACK_SIZE  equ (CR_BYTES_PER_ROW+1)*CR_HEIGHT
 
 ; --- the level, unpacked ----------------------------------------------------
 scen_count      equ shot_back+SHOT_BACK_SIZE

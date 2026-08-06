@@ -353,16 +353,16 @@ sb_addr:
 ;  picture one Mode 0 pixel; the mask chain shifts a 1 in at the left so
 ;  the pixel that falls off the front keeps its background.
 ; ============================================================================
-;  Both sprite kinds are sixteen pixels wide — eight art bytes — so the row
+;  Both sprite kinds are the same width in art bytes, so the row
 ;  build is unrolled rather than counted. That frees BC to hold the output
 ;  pointer (LD (BC),A is 7 T-states; the indexed form is 19) and removes the
-;  loop overhead entirely, which on a thirty-two row sprite is worth having.
-        assert  CR_BYTES_PER_ROW == 8 && BLK_BYTES_PER_ROW == 8
-SPR_W           equ 8
+;  loop overhead entirely, which over a whole sprite is worth having.
+        assert  CR_BYTES_PER_ROW == BLK_BYTES_PER_ROW
+SPR_W           equ CR_BYTES_PER_ROW
 
 ; ============================================================================
 ;  spr_rowbuild — one art row -> sp_rowbuf as interleaved (mask, data) pairs.
-;  Unrolled rather than counted: both sprite kinds are eight art bytes wide,
+;  Unrolled rather than counted: both sprite kinds are the same width,
 ;  so the count is a constant and BC is free to hold the output pointer
 ;  (LD (BC),A is 7 T-states; the indexed form is 19). np2mask and np2data sit
 ;  on consecutive pages on purpose — once L holds the art byte, moving from

@@ -8,8 +8,8 @@
 ;
 ;  The bird is integrated SHOT_SUBSTEPS times a frame and probed as a single
 ;  point at its centre. That is deliberate, not lazy: at two substeps the
-;  fastest shot moves about four pixels between probes, a quarter of a
-;  16-pixel cell, so it cannot tunnel through a wall — and a point probe
+;  fastest shot moves about four pixels between probes, well under a
+;  ten-pixel cell, so it cannot tunnel through a wall — and a point probe
 ;  against a grid is one lookup instead of an overlap test.
 ; ============================================================================
 
@@ -41,7 +41,7 @@ shot_aim_pos:
         ld      (sa_pull),a         ; costs a full erase-and-redraw and the
                                     ; blitter quantises x to even anyway
 
-        ld      a,(aim_angle)       ; x = sling_x - 8 - cos(angle)*pull/128
+        ld      a,(aim_angle)       ; x = sling_x - half a bird - cos*pull/128
         call    cos256
         ld      b,a
         ld      a,(sa_pull)
@@ -49,20 +49,20 @@ shot_aim_pos:
         call    div128
         ld      b,a
         ld      a,(sling_x)
-        sub     8
+        sub     CR_WIDTH/2
         sub     b
         ld      l,a
         ld      h,0
         ld      (sa_x),hl
 
-        ld      a,(aim_angle)       ; y = pouch - 16 + sin(angle)*pull/128
+        ld      a,(aim_angle)       ; y = pouch - half a bird + sin*pull/128
         call    sin256
         ld      b,a
         ld      a,(sa_pull)
         call    mul_s8
         call    div128
         ld      b,a
-        ld      a,SLING_POUCH_Y-16
+        ld      a,SLING_POUCH_Y-CR_HEIGHT/2
         add     a,b
         ld      l,a
         ld      h,0
@@ -869,8 +869,8 @@ pos_add:
 ; ============================================================================
 ;  shot_collide — probe the bird's centre against the ground and the grid.
 ; ============================================================================
-SHOT_CX         equ 8               ; the bird's middle, within its 16x32 cell
-SHOT_CY         equ 19
+SHOT_CX         equ CR_WIDTH/2      ; the bird's middle, within its own sprite
+SHOT_CY         equ 12
 
 shot_collide:
         ld      hl,(sh_x+1)         ; centre, in world pixels
@@ -915,24 +915,14 @@ sc_grid:
         ld      a,h
         or      a
         ret     nz
-        ld      a,l
-        srl     a
-        srl     a
-        srl     a
-        srl     a
+        call    pix_cell
         cp      GRID_H
         ret     nc
         ld      c,a                 ; C = row
+        push    bc
         ld      hl,(sc_cx)
-        ld      a,l
-        srl     h
-        rr      a
-        srl     h
-        rr      a
-        srl     h
-        rr      a
-        srl     h
-        rr      a
+        call    pix_cell
+        pop     bc
         cp      GRID_W
         ret     nc
         ld      b,a                 ; B = column
@@ -1152,8 +1142,8 @@ sd_pos:
 
 ; ----------------------------------------------------------------------------
 ;  shot_erase — put the world back where the bird was last drawn.
-;  A 16x32 sprite at an arbitrary x touches five char columns, so that is
-;  what we rebuild.
+;  The bird at an arbitrary x touches four char columns; the box below is
+;  five, which costs one column and never leaves an edge behind.
 ; ----------------------------------------------------------------------------
 shot_erase:
         ld      a,(sh_drawn)

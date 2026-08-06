@@ -143,9 +143,13 @@ def decode_pixels(byte):
 
 def screenshot(name):
     off = ((crtc[12] & 3) << 8) | crtc[13]
+    #  R1 is BOTH the displayed width and the ring row stride — the 6845
+    #  advances MA by R1 per character row. Hard-coding 40 here decodes a
+    #  39-column screen into diagonal stairs and blames the game for it.
+    cols = crtc[1] or 40
     rgb = [hw_rgb(p) for p in pens]
     BW = 24                             # border, in output pixels
-    W = 160 * 4
+    W = cols * 4 * 4
     rows = []
     brd = bytes(rgb[16])
     brow = brd * (W + 2 * BW)
@@ -155,8 +159,8 @@ def screenshot(name):
     for y in range(200):
         line = bytearray(brd * BW)
         base = 0xC000 + (y & 7) * 0x800
-        roff = off + (y >> 3) * 40
-        for c in range(40):
+        roff = off + (y >> 3) * cols
+        for c in range(cols):
             ring = (roff + c) & 0x3FF
             a = base + ring * 2
             for byte in (mem[a], mem[a + 1]):

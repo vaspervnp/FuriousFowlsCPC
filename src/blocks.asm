@@ -1,6 +1,6 @@
 ; ============================================================================
 ;  FURIOUS FOWLS — blocks.asm
-;  The forts: pieces on a 20x10 grid, and the collapse that brings them down.
+;  The forts: pieces on a 32x16 grid, and the collapse that brings them down.
 ;
 ;  WHY A GRID, AND WHY BEAMS
 ;  -------------------------
@@ -29,20 +29,96 @@
 ;  crushes them with no special-case code.
 ; ============================================================================
 
+; ============================================================================
+;  Cells and pixels
+;
+;  A cell is ten pixels square. Ten is not a power of two, so neither
+;  direction of the conversion is a run of shifts any more, and both are
+;  worth having in one place rather than open-coded at every site — that
+;  open-coding is exactly what broke when the cell stopped being sixteen.
+; ============================================================================
+
+; ---- cell_pix — A = cell index -> HL = its first pixel. Clobbers A, DE. -----
+        assert  CELL_PX == 10
+cell_pix:
+        ld      l,a
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,hl               ; 4n
+        add     hl,de               ; 5n
+        add     hl,hl               ; 10n
+        ret
+
+; ---- pix_cell — HL = a world pixel, under 512 -> A = the cell it is in ------
+;  Division by ten without a loop: halve it, then take the top six bits of
+;  x*205, which is x/5 to well inside a whole cell. Halving first is exact
+;  because a pixel that is a multiple of ten is even.
+; ----------------------------------------------------------------------------
+pix_cell:
+        srl     h
+        rr      l                   ; under 512, so H is now zero
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,hl
+        add     hl,de               ; 5x
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl               ; 40x
+        add     hl,de               ; 41x
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,hl               ; 164x
+        add     hl,de               ; 205x
+        ld      a,h
+        rrca
+        rrca
+        and     #3F
+        ret
+
+; ---- cell_cols — A = cell column, C = width in PIXELS ----------------------
+;      -> (cc_col) the first character column it touches, (cc_n) how many.
+;  Ten pixels is two and a half characters, so a cell's span in characters
+;  depends on which cell it is; nothing may assume a constant width again.
+; ----------------------------------------------------------------------------
+cell_cols:
+        call    cell_pix
+        ld      a,l
+        and     3                   ; pixels wasted at the left of that char
+        add     a,c
+        add     a,3
+        srl     a
+        srl     a
+        ld      (cc_n),a
+        srl     h
+        rr      l
+        srl     h
+        rr      l
+        ld      a,l
+        ld      (cc_col),a
+        ret
+
+cc_col:         db      0
+cc_n:           db      0
+
 ; ----------------------------------------------------------------------------
 ;  grid_at — B = column, C = row -> HL = that cell's address. Clobbers A, DE.
 ; ----------------------------------------------------------------------------
-        assert  GRID_W == 20
+;  Thirty-two columns is a power of two, so the row offset is five shifts
+;  and no addition — twenty needed a x16 plus a x4.
+        assert  GRID_W == 32
 grid_at:
         ld      l,c
         ld      h,0
         add     hl,hl
-        add     hl,hl               ; row * 4
-        ld      e,l
-        ld      d,h
         add     hl,hl
-        add     hl,hl               ; row * 16
-        add     hl,de               ; row * 20
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl               ; row * 32
         ld      e,b
         ld      d,0
         add     hl,de
@@ -200,8 +276,9 @@ bhi_store:
 ; ============================================================================
 ;  The tilted art, built once per level
 ; ============================================================================
-        assert  BLK_BYTES == 128
-        assert  CELL_PX == 16
+;  Neither stride is a power of two any more — a ten by ten tile is fifty
+;  bytes of art and a hundred map entries — so both go through rb_mul.
+        assert  ROT_TILTS == 4
 
 ; ---- rot_build — apply the four rot_map tables to this level's ten pieces --
 rot_build:
@@ -215,27 +292,20 @@ rb_ploop:
         xor     a
         ld      (rb_tilt),a
 rb_tloop:
-        ld      a,(rb_tilt)         ; HL = rot_map + tilt*256
-        ld      h,a
-        ld      l,0
+        ld      a,(rb_tilt)         ; HL = rot_map + tilt*BLK_BYTES*2: the
+        call    rb_mul              ; map is one entry per PIXEL and a byte
+        add     hl,hl               ; carries two of them
         ld      de,rot_map
         add     hl,de
-        ld      a,(rb_piece)        ; DE = rot_art + (piece*4 + tilt)*128
+        push    hl
+        ld      a,(rb_piece)        ; DE = rot_art + (piece*4+tilt)*BLK_BYTES
         add     a,a
         add     a,a
         ld      c,a
         ld      a,(rb_tilt)
         add     a,c
-        ld      e,a
-        ld      d,0
-        ld      b,7
-rb_shift:
-        ex      de,hl
-        add     hl,hl
-        ex      de,hl
-        djnz    rb_shift
-        push    hl
-        ld      hl,rot_art
+        call    rb_mul
+        ld      de,rot_art
         add     hl,de
         ex      de,hl
         pop     hl
@@ -273,6 +343,24 @@ rb_byte:
         ret
 
 ; ---- rb_pen — A = source pixel index (#FF = transparent) -> A = pen --------
+; ---- rb_mul — A -> HL = A * BLK_BYTES (fifty: 25 doubled) ------------------
+rb_mul:
+        ld      l,a
+        ld      h,0
+        ld      d,h
+        ld      e,l                 ; DE = a
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl               ; 8a
+        ld      b,h
+        ld      c,l
+        add     hl,hl               ; 16a
+        add     hl,bc               ; 24a
+        add     hl,de               ; 25a
+        add     hl,hl               ; 50a
+        ret
+        assert  BLK_BYTES == 50
+
 rb_pen:
         cp      #FF
         jr      z,rb_transp
@@ -305,25 +393,21 @@ rb_transp:
 
 ; ---- block_art_base — A = piece -> HL = its upright tile in this set -------
 block_art_base:
-        ld      c,a
-        ld      hl,0
+        ld      c,a                 ; C = the piece
+        xor     a
+        ld      b,a
         ld      a,(block_set)
         or      a
         jr      z,bab_piece
         ld      b,a
-        ld      de,BLK_PIECES
+        xor     a
 bab_set:
-        add     hl,de
+        add     a,BLK_PIECES        ; set * BLK_PIECES — forty at the most
         djnz    bab_set
 bab_piece:
-        ld      e,c
-        ld      d,0
-        add     hl,de
-        ld      b,7
-bab_shift:
-        add     hl,hl
-        djnz    bab_shift
-        ld      de,BLOCK_ART
+        add     a,c
+        call    rb_mul              ; ...times fifty, which is no longer a
+        ld      de,BLOCK_ART        ; run of shifts
         add     hl,de
         ret
 
@@ -342,18 +426,13 @@ block_tile:
         ld      a,(ix+BLK_PIECE)
         jp      block_art_base
 bt_tilted:
-        dec     a                   ; rot_art + (piece*4 + tilt-1)*128
+        dec     a                   ; rot_art + (piece*4 + tilt-1)*BLK_BYTES
         ld      c,a
         ld      a,(ix+BLK_PIECE)
         add     a,a
         add     a,a
         add     a,c
-        ld      l,a
-        ld      h,0
-        ld      b,7
-bt_shift:
-        add     hl,hl
-        djnz    bt_shift
+        call    rb_mul
         ld      de,rot_art
         add     hl,de
         ret
@@ -364,12 +443,8 @@ bt_shift:
 
 ; ---- block_y — IX = block -> HL = the PIVOT cell's top scanline ------------
 block_y:
-        ld      l,(ix+BLK_ROW)
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; row * 16
+        ld      a,(ix+BLK_ROW)
+        call    cell_pix
         ld      e,(ix+BLK_YOFF)
         ld      d,0
         add     hl,de
@@ -428,12 +503,8 @@ block_draw:
         add     hl,de
 bd_ystart:
         ld      (bd_y),hl
-        ld      l,(ix+BLK_COL)
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
+        ld      a,(ix+BLK_COL)
+        call    cell_pix
         ld      (bd_x),hl
         ld      a,(ix+BLK_LEN)
         ld      (bd_n),a
@@ -544,13 +615,14 @@ bdr_test:
 block_bbox:
         call    block_tile          ; sets bd_slope
         call    block_span
-        ld      a,(ix+BLK_COL)
-        add     a,a
-        add     a,a
+        ld      a,(ix+BLK_LEN)      ; how wide it is, in pixels...
+        call    cell_pix
+        ld      c,l                 ; (a beam is at most eight cells)
+        ld      a,(ix+BLK_COL)      ; ...and which characters that covers
+        call    cell_cols
+        ld      a,(cc_col)
         ld      (bb_col),a
-        ld      a,(ix+BLK_LEN)
-        add     a,a
-        add     a,a
+        ld      a,(cc_n)
         ld      (bb_ncol),a
         call    block_y
         ld      a,l
@@ -1160,9 +1232,9 @@ block_step:
         ret     nz                  ; already leaning: it has had its go
         ld      a,c
         cp      SUP_TIPR
-        ld      a,TILT_D4
+        ld      a,TILT_LEAN_D
         jr      z,bs_tip_go
-        ld      a,TILT_U4
+        ld      a,TILT_LEAN_U
 bs_tip_go:
         ld      (ix+BLK_SHOVE),0    ; the push has been spent
         ld      (ix+BLK_TILT),a     ; the tilt goes in BEFORE the erase:
@@ -1216,9 +1288,9 @@ bs_onslope:
         jr      z,bs_slope_only
         ld      a,(ix+BLK_SHOVE)
         bit     7,a
-        ld      a,TILT_D4
+        ld      a,TILT_LEAN_D
         jr      z,bs_topple
-        ld      a,TILT_U4
+        ld      a,TILT_LEAN_U
 bs_topple:
         ld      (ix+BLK_TILT),a
         call    block_erase
@@ -1296,7 +1368,7 @@ support_tilt:
         pop     ix
         or      a
         ret     z
-        cp      TILT_U4             ; the D tilts drop to the right
+        cp      TILT_LEAN_U             ; the D tilts drop to the right
         jr      nc,st_left
         ld      a,1
         ret
@@ -1318,9 +1390,9 @@ bs_tipping:
         ld      (ix+BLK_TIPT),a
         ret     nz
         ld      a,(ix+BLK_TILT)
-        cp      TILT_D8             ; already at full lean?
+        cp      TILT_TIP_D             ; already at full lean?
         jr      z,bs_tip_done
-        cp      TILT_U8
+        cp      TILT_TIP_U
         jr      z,bs_tip_done
         call    block_erase
         inc     (ix+BLK_TILT)       ; D4 -> D8, U4 -> U8

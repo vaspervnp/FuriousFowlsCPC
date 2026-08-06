@@ -23,7 +23,7 @@
 
 TB_SCALE_BIG    equ 3
 TITLE_BIRD_Y    equ 74
-TITLE_PIG_Y     equ 112
+TITLE_PIG_Y     equ 104
 BLINK_MASK      equ 63              ; a blink roughly every second...
 BLINK_SHUT      equ 6               ; ...lasting this long
 
@@ -266,13 +266,13 @@ tc_pose:
 
         ld      hl,TITLE_BIRD_Y     ; six birds, centred
         ld      (sp_y),hl
-        ld      hl,32
+        ld      hl,(160-BIRD_TYPES*CR_WIDTH)/2
         ld      (sp_x),hl
         ld      bc,BIRD_TYPES*256   ; B = how many, C = the first type
         call    tc_run
         ld      hl,TITLE_PIG_Y      ; three pigs under them
         ld      (sp_y),hl
-        ld      hl,56
+        ld      hl,(160-PIG_TYPES*CR_WIDTH)/2 & #FE
         ld      (sp_x),hl
         ld      bc,PIG_TYPES*256+PIG_PIG
         ; fall through
