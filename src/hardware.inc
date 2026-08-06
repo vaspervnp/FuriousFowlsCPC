@@ -22,8 +22,9 @@
 ;    #3F80-#3FFF  stack (grows down from #4000)
 ;    #4000-#87FF  code, scenery RLE, level records, tables
 ;    #8800-#8B1F  block art, 16 pieces x 50 B                 (800)
-;    #8C00-#8D8F  rot_map   : the four tilt maps              (400)
-;    #9E00-#BFFF  game state
+;    #8B20-#8CB4  rot_map   : the four tilt maps              (400)
+;    #8CC0-#A1FF  the level records                          (5440)
+;    #A200-#BB7F  game state
 ;    #C000-#FFFF  video RAM
 ;
 ;  The art is too big to live in one loadable image below #C000, so the
@@ -78,8 +79,19 @@ BLOCK_ART               equ #8800
 ;  used to sit in the code bank, where a kilobyte was a sixteenth of
 ;  everything; there is room for them here, behind the block art and
 ;  still inside the same loaded image.
-ROT_MAP_BASE            equ #8C00
-STATE_BASE              equ #9E00
+ROT_MAP_BASE            equ #8B20
+;  The forty-odd level records used to ride in the code bank, where they
+;  were the single biggest thing in it. There is four and a half kilobytes
+;  of nothing between the tilt maps and the state block, they are read-only
+;  and they are already part of the loaded image — so they live here now,
+;  and the code bank got a fifth of itself back.
+LEVEL_DATA_BASE         equ #8CC0
+;  The state block is about six and a half kilobytes and it used to start
+;  at #9E00, which left two kilobytes of nothing between its end and video
+;  RAM. Fifty level records needed those two kilobytes more than the gap
+;  did — the assert at the bottom of state.inc is what says when that stops
+;  being true.
+STATE_BASE              equ #A200
 
 ; ---------------------------------------------------------------------------
 ;  Playfield. The world is 320 px (80 CRTC chars) and the window shows

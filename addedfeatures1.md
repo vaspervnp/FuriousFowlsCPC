@@ -360,3 +360,45 @@ TNT: build the rig with its anchor MISSING and check that the load ends on
 the ground, then build it with the anchor and check that nothing moves in
 four hundred frames, then cut it with a bird and check the stone lands on
 the pig. All three pass.
+
+---
+
+## Fifty levels, and forts that stop killing their own pigs
+
+**Levels 13, 21, 29 and 37 lost a pig before the first bird flew.** The
+cause was the rule that a pig WINS the cell it stands in: the block there
+was deleted, the pig stayed. In those four the deleted cell was part of a
+gatehouse walkway, so the beam left behind was supported at one end only —
+and a beam supported at one end does not fall, it TIPS, straight onto the
+pig it had just made room for.
+
+**So move the pig, not the block.** A pig that lands in a fort's cell goes
+up on to the roof of its own column, standing on the fort rather than
+inside it. The fort loses nothing and the player gets a different shot to
+work out.
+
+**`check_standing` now runs on every build.** It is the engine's own
+support rule written out in Python: a merged beam is judged at its ends,
+and one held at exactly one end will tip at load. Deliberately not
+exhaustive — it does not model wedging, ropes or the sub-cell fall — but
+it catches the one failure that has now happened twice (the manor and
+citadel overhangs, then these four), and it costs nothing. Ropes are
+excluded: they are tied at their ends, so a rope strung between two posts
+correctly has nothing whatever under it. All fifty forts are clean.
+
+**LEVELS is 50.** That needed 900 more bytes of level record than the code
+bank had, so the records moved out of it entirely:
+
+| | was | now |
+|---|---|---|
+| code bank | #4000-#87FF, ending #83C6 | #4000-#87FF, ending **#7640** |
+| block art | #8800 | #8800 |
+| rot_map | #8C00 | #8B20 |
+| level records | *inside the code bank* | **#8CC0-#A1FF** (5440 B) |
+| game state | #9E00 | **#A200** |
+
+The records are read-only and already part of the loaded image, so putting
+them behind the tilt maps costs nothing and hands the code bank back a
+fifth of itself. The state block moved up to make room; it is 6.5 KB and
+there is still 1153 bytes between its end and video RAM, which the assert
+at the foot of `state.inc` is watching.

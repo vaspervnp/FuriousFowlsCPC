@@ -346,11 +346,15 @@ sp_oldcam:      db      0
 
 scenery_rle:
         incbin  "scenery.raw"
-level_data:
-        incbin  "levels.raw"
 
         assert  $ < BLOCK_ART       ; the code bank must not reach the art
 code_end:
+
+; ---- the level records, out of the code bank and behind the tilt maps ------
+        org     LEVEL_DATA_BASE
+level_data:
+        incbin  "levels.raw"
+        assert  $ <= STATE_BASE
 
 ; ---- block art, at its permanent address and needing no move ---------------
         org     BLOCK_ART

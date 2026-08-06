@@ -42,7 +42,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sheetdefs import (BLOCK_PIECES, BLOCK_SETS, SCENERY_CELLS, BIRDS, PIGS)
 
-LEVELS = 40
+LEVELS = 50
 GRID_W, GRID_H = 32, 16
 CELL = 10                       # pixels per grid cell, both ways. 32x10 is
                                 # the same 320-pixel world as 20x16 was, and
@@ -68,6 +68,7 @@ PIECE_CH = {'h': 0, 'v': 1, 'c': 2, 'b': 3, '/': 4,
 #  pillar it still has instead of dissolving into its cells — and it is
 #  also what makes a rope a rope rather than a row of knots.
 BEAM_CH = set('hs-')
+ROPE_CH = set('-|')
 MAX_BEAM = 8            # the length field is three bits
 CH_PIECE = {v: k for k, v in PIECE_CH.items()}
 PIG_CH = {'p': 0, 'P': 1, 'K': 2}
@@ -327,19 +328,46 @@ def default_level(n):
     if grade >= 6:
         pigs += [('P', ZONE_GAP, GRID_H - 1)]
 
-    #  A cell may only hold one thing, and PIGS WIN. A fort with a block
-    #  where its pig should be is a fort with one fewer pig, which is a
-    #  level that cannot be finished.
-    pigs = [pg for pg in pigs if 0 < pg[1] < GRID_W][:MAX_PIGS]
-    taken = set()
-    for _ch, cx, cy in pigs:
-        taken.add((cx, cy))
-        taken.add((cx, cy - 1))         # a pig is two cells tall
+    #  A cell holds one thing, and it used to be the PIG that won it: the
+    #  block was deleted and the pig stayed. That is how levels 13, 21, 29
+    #  and 37 killed their own pigs before the player had taken a shot —
+    #  the deleted cell was part of a walkway, the beam it left behind was
+    #  supported at one end only, and a beam supported at one end TIPS. It
+    #  tipped straight onto the pig it had just made room for.
+    #
+    #  So MOVE THE PIG instead. A pig that lands in a fort's cell goes up
+    #  on to the roof of its own column, where it is standing on the fort
+    #  rather than inside it — which is a different shot to work out and
+    #  costs the fort nothing.
     seen = {}
     for ch, cx, cy in blocks:
-        if 0 <= cx < GRID_W and 0 <= cy < GRID_H and (cx, cy) not in taken:
+        if 0 <= cx < GRID_W and 0 <= cy < GRID_H:
             seen[(cx, cy)] = ch
     blocks = [(ch, cx, cy) for (cx, cy), ch in seen.items()]
+    occupied = set(seen)
+
+    def perch(col):
+        """The row a pig's FEET take standing on top of this column."""
+        here = [r for _c, r in occupied if _c == col]
+        feet = (min(here) - 1) if here else GRID_H - 1
+        return feet if feet >= 1 else None
+
+    placed, taken = [], set()
+    for ch, cx, cy in pigs:
+        if not 0 < cx < GRID_W:
+            continue
+        cells = [(cx, cy), (cx, cy - 1)]        # a pig is two cells tall
+        if any(c in occupied or c in taken for c in cells):
+            r = perch(cx)
+            if r is None:
+                continue
+            cells = [(cx, r), (cx, r - 1)]
+            if any(c in occupied or c in taken for c in cells):
+                continue
+            cy = r
+        taken.update(cells)
+        placed.append((ch, cx, cy))
+    pigs = placed[:MAX_PIGS]
 
     #  A fort that overflows the block table would be silently truncated at
     #  load, which looks like a level designed wrong rather than one built
@@ -513,6 +541,43 @@ def merge_beams(blocks, path):
     return out
 
 
+def check_standing(lv, name):
+    """Warn about anything that will move before the player has taken a shot.
+
+    This is the engine's own support rule, written out in Python: a merged
+    beam is judged at its ENDS, and a beam held at exactly one end TIPS
+    over that end. A fort that tips at level load looks like a level
+    designed wrong rather than one built wrong, and it is how levels 13,
+    21, 29 and 37 killed their own pigs before the first bird flew.
+
+    It is deliberately not exhaustive — it does not model wedging, ropes or
+    the sub-cell fall — but it catches the one failure that has actually
+    happened, twice, and it costs nothing to run on every build.
+    """
+    beams = merge_beams(lv['blocks'], name)
+    occ = {(c, r) for _ch, c, r, ln in beams for c in range(c, c + ln)}
+    occ |= {(c, r) for _ch, c, r in lv['pigs']}
+    bad = []
+    for ch, col, row, ln in beams:
+        #  Rope is not judged this way — it is tied at its ends, to the
+        #  cell above, beside or under each of them, so a rope strung
+        #  between two posts correctly has nothing whatever underneath it.
+        if ln < 2 or row >= GRID_H - 1 or ch in ROPE_CH:
+            continue
+        lo = (col, row + 1) in occ
+        hi = (col + ln - 1, row + 1) in occ
+        if lo != hi:
+            bad.append('%r at %d,%d (%d wide) is held at one end only'
+                       % (ch, col, row, ln))
+        elif not lo and not any((c, row + 1) in occ
+                                for c in range(col, col + ln)):
+            bad.append('%r at %d,%d (%d wide) has nothing under it'
+                       % (ch, col, row, ln))
+    for msg in bad:
+        print('  %s: %s' % (name, msg))
+    return len(bad)
+
+
 def die(path, lineno, msg):
     where = '%s:%d' % (path, lineno) if lineno else path
     raise SystemExit('%s: %s' % (where, msg))
@@ -645,12 +710,16 @@ def main(argv):
         return
 
     os.makedirs(BUILD, exist_ok=True)
-    recs = []
+    recs, moving = [], 0
     for n in range(1, LEVELS + 1):
         path = '%s/level%02d.txt' % (DIR, n)
         if not os.path.exists(path):
             raise SystemExit('%s is missing — run `make levels-export`' % path)
-        recs.append(compile_level(from_text(path), path))
+        lv = from_text(path)
+        moving += check_standing(lv, 'level%02d' % n)
+        recs.append(compile_level(lv, path))
+    if moving:
+        print('  %d structure(s) will move before the first shot' % moving)
 
     data, offs = bytearray(), []
     for r in recs:
