@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ============================================================================
-#  levels.py — the forty forts, as text you can edit.
+#  levels.py — the fifty forts, as text you can edit.
 #
 #      python3 tools/levels.py --export        write any missing level file
 #      python3 tools/levels.py --export --force  overwrite ALL of them
@@ -87,13 +87,13 @@ PIG_NAMES = [p[0] for p in PIGS]
 
 
 # ===========================================================================
-#  The default forty.
+#  The default fifty.
 #
 #  Complexity GROWS with the level number; it does not cycle. The old
 #  generator picked a shape with (n-1) % 8, so the eighth fort and the
 #  sixteenth were built identically and only the material told them apart —
 #  and once there is one material, nothing did. Here `grade` climbs from 0
-#  to 7 across the forty and decides how MUCH is built: how many
+#  to 7 across the fifty and decides how MUCH is built: how many
 #  structures, how tall the tallest, whether there is a charge buried in
 #  it, whether the base is stone. `shape` still rotates, but it only
 #  decides WHICH shapes, for variety within a grade.
@@ -396,7 +396,7 @@ def default_level(n):
     #  slingshot and the outbuilding, and x 208..240, between the main fort
     #  and the annex. Both are 32 px, which is one scenery cell. The
     #  64-px-wide rock and boulder therefore go unused by the default
-    #  forty; they are still there for a hand-built level with room.
+    #  fifty; they are still there for a hand-built level with room.
     scenery = [('cloud_a', 16, 10), ('cloud_b', 188, 26)]
     scenery.append(('bush_a' if n % 3 else 'bush_b', 44, GROUND_Y - 64))
     if n % 5:

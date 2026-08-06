@@ -7,6 +7,7 @@
 #    make dsk           disk image     -> dist/fowls.dsk
 #    make sprites-export  write assets/sheets/*.png so you can edit the art
 #    make levels-export   write assets/levels/*.txt so you can edit the forts
+#    make manual        render manual.md / manual-el.md -> dist/*.pdf
 #    make run           launch dist/fowls.dsk in RetroVirtualMachine
 #    make clean         remove build/ and dist/
 #
@@ -61,7 +62,7 @@ EXEC_ADDR := 4000
 ART_ADDR  := C000
 
 .PHONY: all asm dsk run clean sprites-export levels-export sounds-export \
-        art levels sounds
+        art levels sounds manual
 
 all: dsk
 
@@ -155,6 +156,22 @@ $(DSK): $(BIN) $(ARTBIN) $(LOADER) $(SPLASH) $(SCORES)
 	@echo "--- catalogue of $(DSK) ---"
 	$(IDSK) $(DSK) -l
 	$(PYTHON) tools/dsk2ext.py $(DSK)
+
+# ---- manuals ---------------------------------------------------------------
+#  The renderer understands exactly the Markdown these two files use and
+#  writes anything else out as it stands, so a construct it has never met
+#  shows up in the PDF rather than vanishing from it.
+MANUALS   := $(DIST)/manual.pdf $(DIST)/manual-el.pdf
+
+manual: $(MANUALS)
+
+$(DIST)/manual.pdf: manual.md tools/mkmanual.py
+	@mkdir -p $(DIST)
+	$(PYTHON) tools/mkmanual.py manual.md $@
+
+$(DIST)/manual-el.pdf: manual-el.md tools/mkmanual.py
+	@mkdir -p $(DIST)
+	$(PYTHON) tools/mkmanual.py manual-el.md $@
 
 # ---- emulator --------------------------------------------------------------
 run: dsk

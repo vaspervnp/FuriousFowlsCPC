@@ -403,7 +403,7 @@ block_art_base:
         ld      b,a
         xor     a
 bab_set:
-        add     a,BLK_PIECES        ; set * BLK_PIECES — forty at the most
+        add     a,BLK_PIECES        ; set * BLK_PIECES; there is one set
         djnz    bab_set
 bab_piece:
         add     a,c

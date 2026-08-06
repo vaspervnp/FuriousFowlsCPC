@@ -2,9 +2,9 @@
 
 An Angry Birds for the **Amstrad CPC 464/6128**, written in Z80 assembly.
 Mode 0 (160x200, 16 colours) over a 320 px world panned by CRTC hardware
-scrolling; a slingshot, six birds, three kinds of pig, forty forts built
-from ten piece shapes in six materials, and a collapse model that drops
-the roof on whatever is underneath.
+scrolling; a slingshot, six birds, three kinds of pig, fifty forts built
+from sixteen piece shapes — timber, glass, stone, rope and dynamite — and
+a collapse model that drops the roof on whatever is underneath.
 
 Boot `dist/fowls.dsk` in any CPC emulator (or on real hardware) and
 `RUN"FOWLS"`.
@@ -75,11 +75,11 @@ over the bird.
 
 ## Editing the levels
 
-Forty forts live in `assets/levels/levelNN.txt` as editable text.
+Fifty forts live in `assets/levels/levelNN.txt` as editable text.
 
 ```sh
 make levels-export           # writes any level file that is missing
-make levels-export FORCE=1   # overwrite all forty with the defaults
+make levels-export FORCE=1   # overwrite all fifty with the defaults
 ```
 
 ```
@@ -124,7 +124,7 @@ FuriousFowlsCPC/
 │   ├── blocks.asm      the 20x10 grid, damage, and the collapse sweep
 │   ├── entity.asm      pigs: poses, falling, being crushed
 │   ├── shot.asm        slingshot, ballistics, collision
-│   ├── level.asm       unpacking one of the forty records
+│   ├── level.asm       unpacking one of the fifty records
 │   ├── game.asm        turn machine and camera
 │   ├── ui.asm          status strip and banners
 │   ├── input.asm       keyboard matrix scanner
@@ -133,7 +133,7 @@ FuriousFowlsCPC/
 │   └── state.inc       every mutable table, as addresses
 ├── assets/
 │   ├── sheets/         SOURCE OF TRUTH for all art
-│   └── levels/         SOURCE OF TRUTH for all forty forts
+│   └── levels/         SOURCE OF TRUTH for all fifty forts
 ├── tools/
 │   ├── artlib.py       dependency-free PNG codec + the 16-pen palette
 │   ├── sheetdefs.py    the shape of every sheet, in one place
@@ -155,11 +155,13 @@ FuriousFowlsCPC/
 | `#0000-#003F` | IM 1 vector at `#0038` |
 | `#0100-#02FF` | np2mask / np2data: art byte -> Mode 0 mask and data |
 | `#0300-#03FF` | np2nib: the same, for compositing art over art |
-| `#0400-#38FF` | creature art, 54 frames x 256 B |
+| `#0400-#191F` | creature art, 54 frames x 100 B |
 | `#3F80-#3FFF` | stack |
-| `#4000-#7FFF` | code, scenery run-length streams, the forty level records |
-| `#8000-#9DFF` | block art, 60 pieces x 128 B |
-| `#9E00-#BFFF` | game state |
+| `#4000-#87FF` | code and the scenery run-length streams |
+| `#8800-#8B1F` | block art, 16 pieces x 50 B |
+| `#8B20-#8CB4` | rot_map: the four tilt maps |
+| `#8CC0-#A1FF` | the fifty level records |
+| `#A200-#BB7F` | game state |
 | `#C000-#FFFF` | video RAM |
 
 The art does not fit in one loadable image below `#C000`, so the BASIC

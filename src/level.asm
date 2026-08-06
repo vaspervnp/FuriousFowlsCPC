@@ -1,6 +1,6 @@
 ; ============================================================================
 ;  FURIOUS FOWLS — level.asm
-;  Unpacking one of the forty records into the live tables.
+;  Unpacking one of the fifty records into the live tables.
 ;
 ;  The record format is documented in tools/levels.py, which writes it; the
 ;  two have to be read together. Nothing here allocates or validates —

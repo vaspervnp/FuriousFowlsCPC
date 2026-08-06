@@ -189,7 +189,7 @@ headroom where there were 162.
 `SET_ORDER` and the material tiering are gone from `tools/levels.py` —
 what makes a late level hard is how the fort is BUILT, not what it is
 painted with. The `set` byte stays in the file format: it costs one byte
-and it is the hook a second material would hang on. All forty level files
+and it is the hook a second material would hang on. All the level files
 were re-exported to `set wood`.
 
 **A bug found while checking, and fixed.** `repaint_window` runs at every
@@ -266,7 +266,7 @@ and the player sees a chain that stops rather than a machine that does.
 
 ## Notes on 3, after doing it
 
-`grade` climbs 0..7 across the forty and decides **how much** is built;
+`grade` climbs 0..7 across the fifty and decides **how much** is built;
 `shape` still rotates 0..7 but only decides **which** shapes. So:
 
 * grade 0 — one structure, one pig. Level one is a hut.
@@ -296,7 +296,7 @@ the two arches.
 
 **Scenery had to move.** Three zones of building leave only two gaps of
 bare ground: x 40..80 and x 208..240. Both are 32 px, which is one cell,
-so the 64-px rock and boulder go unused by the default forty — still there
+so the 64-px rock and boulder go unused by the default fifty — still there
 for a hand-built level with room for them.
 
 ### And a note on measuring, again

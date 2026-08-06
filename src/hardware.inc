@@ -80,7 +80,7 @@ BLOCK_ART               equ #8800
 ;  everything; there is room for them here, behind the block art and
 ;  still inside the same loaded image.
 ROT_MAP_BASE            equ #8B20
-;  The forty-odd level records used to ride in the code bank, where they
+;  The fifty level records used to ride in the code bank, where they
 ;  were the single biggest thing in it. There is four and a half kilobytes
 ;  of nothing between the tilt maps and the state block, they are read-only
 ;  and they are already part of the loaded image — so they live here now,

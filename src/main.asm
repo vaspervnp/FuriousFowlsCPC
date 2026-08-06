@@ -342,7 +342,7 @@ sp_oldcam:      db      0
 
 ; ---- generated tables ------------------------------------------------------
         include "art_tables.inc"    ; block strengths, scenery strip offsets
-        include "level_tables.inc"  ; where each of the forty records starts
+        include "level_tables.inc"  ; where each of the fifty records starts
         include "tables.inc"        ; font, strings, sine
 
 scenery_rle:
