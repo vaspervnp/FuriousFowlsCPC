@@ -61,11 +61,9 @@ BIRD_COUNT = len(BIRDS)
 PIG_COUNT = len(PIGS)
 
 # ---------------------------------------------------------------------------
-#  BLOCKS — 16x16. Ten pieces, in FIVE material sets, so every level can
-#  pick the look that suits it. The piece SHAPES are the same across sets;
-#  only the material changes. Piece order IS the BLK_* order in
-#  hardware.inc, and the per-piece hit points below are what the physics
-#  engine uses (scaled by the set's toughness).
+#  BLOCKS — 10x10, drawn at the size they are shown at. Ten pieces in ONE
+#  material: timber. Piece order IS the BLK_* order in hardware.inc, and
+#  the per-piece hit points below are what the physics engine uses.
 # ---------------------------------------------------------------------------
 #  `tall` marks the UPRIGHTS. A piece standing on end does not just get
 #  dislodged when something shoves it — it goes over, which is why they
@@ -74,35 +72,29 @@ BLOCK_PIECES = [
     # name        hp   tall   what it is
     ('beam_h',    30,  False),  # 0  horizontal plank, floor and lintel
     ('beam_v',    30,  True),   # 1  vertical plank, the standard upright
-    ('cube',      45,  False),  # 2  solid square, load bearing
-    ('brick',     40,  False),  # 3  coursed brick, a heavier cube
-    ('roof_l',    25,  False),  # 4  wedge rising to the right
-    ('roof_r',    25,  False),  # 5  wedge rising to the left
-    ('arch',      35,  False),  # 6  rounded top, doorways and windows
-    ('pillar',    28,  True),   # 7  slender column with a cap and a base
-    ('slab',      20,  False),  # 8  thin shelf, snaps easily
+    ('cube',      45,  False),  # 2  sawn offcut, load bearing
+    ('brick',     40,  False),  # 3  the one piece that fills its cell
+    ('roof_l',    25,  False),  # 4  rafter rising to the right
+    ('roof_r',    25,  False),  # 5  rafter rising to the left
+    ('arch',      35,  False),  # 6  lintel on two short legs
+    ('pillar',    28,  True),   # 7  a bare stick, the slenderest upright
+    ('slab',      20,  False),  # 8  a shelf one plank deep, snaps easily
     ('crate',     18,  False),  # 9  hollow box — the weak point of a fort
 ]
 
-# set name, toughness (percent of the base hp), the pens the drawing code
-# paints with — (face, light edge, dark edge, detail) — and whether the
-# whole set is drawn THIN.
-#  EVERY set is drawn thin now. A fort of thin members reads as built —
-#  posts and lintels and bracing — where one of solid 16x16 blocks reads as
-#  a wall with holes in it, and thin uprights are the ones that topple
-#  instead of merely sliding. That also retired 'twig', which was only ever
-#  'wood, but thin': five sets instead of six, and the 1280 bytes it gave
-#  back are what let rot_map move out of the code bank.
+#  ONE SET. Stone, ice, sand and metal are gone: five sets of ten pieces
+#  was 2500 bytes of art to say the same ten shapes in different colours,
+#  and a fort of one honest material reads better than a fort that changes
+#  substance every level. What distinguishes a level now is how it is
+#  BUILT, not what it is painted with.
+#
+#  set name, toughness (percent of the base hp), and the pens the drawing
+#  code paints with — (face, lit edge, shadow, detail).
 BLOCK_SETS = [
-    ('wood',   100, (4, 13, 11, 11), True),
-    ('stone',  170, (10, 2, 1, 1),   True),
-    ('ice',     60, (8, 2, 14, 14),  True),
-    ('sand',    85, (13, 2, 4, 4),   True),
-    ('metal',  220, (14, 2, 9, 9),   True),
+    ('wood', 100, (4, 13, 11, 11)),
 ]
 
 BLOCK_W, BLOCK_H = 10, 10
-DRAW_BLOCK_W, DRAW_BLOCK_H = 16, 16
 BLOCK_COUNT = len(BLOCK_SETS) * len(BLOCK_PIECES)
 BLOCK_COLS = len(BLOCK_PIECES)                # one material set per sheet row
 

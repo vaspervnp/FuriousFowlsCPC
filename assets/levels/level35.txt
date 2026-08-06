@@ -1,7 +1,7 @@
 # FORT 35 — edit freely, then run make.
 # grid is 32x16 cells of 10 px; the last map line sits on the ground.
 name    FORT 35
-set     metal
+set     wood
 sling   24
 birds   red yellow blue black white green
 scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_a 88 104

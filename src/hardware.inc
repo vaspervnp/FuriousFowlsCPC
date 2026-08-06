@@ -11,7 +11,7 @@
 ;    #0000-#003F  IM 1 vector at #0038
 ;    #0100-#01FF  np2mask   : art byte -> Mode 0 mask byte   (page aligned)
 ;    #0200-#02FF  np2data   : art byte -> Mode 0 data byte   (page aligned)
-;    #0400-#39FF  creature art, 54 frames x 256 B            (13824)
+;    #0400-#191F  creature art, 54 frames x 100 B             (5400)
 ;    #3A00-#3F7B  the read-only tables the code bank has no room for, in
 ;                 one contiguous run: sin_table (page aligned, so it must
 ;                 come first), the sounds, the font, the scenery offsets,
@@ -20,9 +20,9 @@
 ;                 below, so editing a sound cannot silently shift the rest
 ;                 into the stack — the assert in main.asm catches it.
 ;    #3F80-#3FFF  stack (grows down from #4000)
-;    #4000-#7FFF  code, scenery RLE, level records, tables
-;    #8000-#98FF  block art, 50 pieces x 128 B               (6400)
-;    #9900-#9CFF  rot_map   : the four tilt maps             (1024)
+;    #4000-#87FF  code, scenery RLE, level records, tables
+;    #8800-#89FF  block art, 10 pieces x 50 B                 (500)
+;    #8A00-#8B8F  rot_map   : the four tilt maps              (400)
 ;    #9E00-#BFFF  game state
 ;    #C000-#FFFF  video RAM
 ;
@@ -69,12 +69,15 @@ NP2NIB                  equ #0300
 CREATURE_ART            equ #0400
 CREATURE_STAGE          equ #C000   ; where the loader parks it
 
-BLOCK_ART               equ #8000
+;  ONE material set is 500 bytes of block art where five were 2500, so
+;  the art starts two kilobytes later and the code bank gets those two
+;  kilobytes — which is the scarce thing here, not the space above #8000.
+BLOCK_ART               equ #8800
 ;  The tilt maps are read once per level load and never written. They
 ;  used to sit in the code bank, where a kilobyte was a sixteenth of
-;  everything; retiring the sixth material set left room for them here,
-;  behind the block art and still inside the same loaded image.
-ROT_MAP_BASE            equ #9900
+;  everything; there is room for them here, behind the block art and
+;  still inside the same loaded image.
+ROT_MAP_BASE            equ #8A00
 STATE_BASE              equ #9E00
 
 ; ---------------------------------------------------------------------------
@@ -125,7 +128,7 @@ PEN_PALEBLUE            equ 14
 PEN_PURPLE              equ 15
 
 ; ---------------------------------------------------------------------------
-;  Entities. Birds and pigs share the 16x32 creature art and one struct.
+;  Entities. Birds and pigs share the 10x20 creature art and one struct.
 ; ---------------------------------------------------------------------------
 ENT_SIZE                equ 16
 ENT_STATE               equ 0       ; ES_*

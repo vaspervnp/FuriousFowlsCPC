@@ -339,15 +339,24 @@ dcr_recalc:
         jr      dcr_loop
 
 ; ----------------------------------------------------------------------------
-;  draw_world_column — A = world char column. Renders it and pushes the
-;  whole 200 lines out. Used by the initial fill and by both scroll seams.
+;  draw_world_column — A = world char column. Renders it and pushes out the
+;  play area. Used by the initial fill and by repaint_window.
+;
+;  NOT line zero. Char row 0 is the status strip, and the strip is not part
+;  of the world — painting sky over it and then laying the HUD back on top
+;  is work that shows: repaint_window is forty columns and takes about a
+;  second, so at every turn boundary the strip was visibly eaten away from
+;  the left and then restored. Starting at PLAY_TOP simply never touches
+;  it. (Panning to the far right still can, because ring cell 40r+x means
+;  world column 64 and up at char row 24 wraps onto row 0 — that is the
+;  seam aliasing, and no line window fixes it.)
 ; ----------------------------------------------------------------------------
 draw_world_column:
         ld      (dcr_col),a
-        xor     a
+        ld      a,PLAY_TOP
         ld      (dcr_y),a
         ld      (sb_y0),a
-        ld      a,SCREEN_LINES
+        ld      a,SCREEN_LINES-PLAY_TOP
         ld      (dcr_n),a
         ld      (sb_n),a
         ld      a,(dcr_col)

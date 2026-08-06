@@ -38,19 +38,10 @@ the blitter's row width, and the grid geometry in `tools/levels.py` —
 
 ## 2. One material only, and thinner
 
-Keep **wood**. Drop stone, ice, sand and metal.
+**Status: done.** See the notes at the bottom.
 
-Five sets of ten pieces is 6400 bytes of block art; one set is 1280, so
-this frees 5120 bytes immediately below `STATE_BASE`. That is more room
-than the code bank has ever had, and several things currently exiled to
-low memory could come back.
-
-The pieces themselves get thinner again — thinner than the current
-`thin=True`, which already halves them.
-
-Levels that name another set need rewriting to `wood`; `tools/levels.py`
-picks the set per level from `BLOCK_SETS`, so with one entry it collapses
-to a constant.
+Keep **wood**. Drop stone, ice, sand and metal. The pieces get thinner
+again — thinner than the old `thin=True`, which already halved them.
 
 ---
 
@@ -155,3 +146,67 @@ Verified headless: title screen, fort rendering, a full shot from the pull
 through the flight to a hit that collapsed the left stack and killed a pig
 (`PIGS 2` -> `PIGS 1`), the camera follow, and the bird coming to rest on
 the grass. Code ends at #7F5E.
+
+---
+
+## Notes on 2, after doing it
+
+**The pieces were being drawn wrong, and item 1 is what broke them.**
+`draw_block` took its canvas size from `BLOCK_W`/`BLOCK_H` but every
+coordinate in it was written for sixteen — `8 - hy`, `ellipse(c, 7.5, ..)`,
+`range(2, w - 2, 3)`. On a ten-wide cell that put the pillar hard against
+the right edge, turned the arch into a broken hook and clipped the cube to
+a bar. It was visible in the game and I had read past it twice.
+
+Ten is not a size you reduce INTO, either: every feature here is one or
+two pixels across and a majority vote on a two-pixel feature is a coin
+toss. So the ten shapes are now **drawn by hand at 10x10** and
+`reduce_cell` is out of the block path entirely. Creatures still go
+through it, because a bird has enough pixels to survive a vote.
+
+**What each piece is now**, all in timber and none of them filling its
+cell except the brick:
+
+| piece | what it is |
+|---|---|
+| `beam_h` | three rows: lit top, shadowed underside, sawn ends, grain |
+| `beam_v` | the same on end, three columns, lit down the left |
+| `cube` | a 6x6 sawn offcut |
+| `brick` | the one solid piece — courses and staggered joints |
+| `roof_l`/`roof_r` | a two-pixel rafter, not a wedge |
+| `arch` | a lintel on two short legs, open underneath |
+| `pillar` | a bare stick two pixels across, with knots |
+| `slab` | a shelf two rows deep |
+| `crate` | a hollow box with a diagonal brace |
+
+Grain is only drawn where there is a face left to draw it on: a two-pixel
+member is a lit edge and a shadow with nothing in between, and putting
+specks on the shadow turned the pillar into a candy stripe.
+
+**One set: 500 bytes of block art where five were 2500.** The 2000 bytes
+went to the CODE bank, not to the space above it — `BLOCK_ART` moved from
+`#8000` to `#8800` and `ROT_MAP_BASE` from `#9900` to `#8A00`, so the code
+bank now runs to `#8800`. It ends at `#7F36`, which is 2250 bytes of
+headroom where there were 162.
+
+`SET_ORDER` and the material tiering are gone from `tools/levels.py` —
+what makes a late level hard is how the fort is BUILT, not what it is
+painted with. The `set` byte stays in the file format: it costs one byte
+and it is the hook a second material would hang on. All forty level files
+were re-exported to `set wood`.
+
+**A bug found while checking, and fixed.** `repaint_window` runs at every
+turn boundary and takes about a second, and `draw_world_column` painted
+lines 0..199 — including char row 0, which is the status strip. So the
+strip was visibly eaten away from the left, one column per frame, and
+then laid back on at the end. It starts at `PLAY_TOP` now and never
+touches it. (Panning to the far right still can: ring cell `40r + x`
+means world column 64 and up at char row 24 wraps onto row 0. That is the
+seam aliasing and no line window fixes it.)
+
+I lost an hour to that one believing it was mine, because it appeared the
+moment level one turned to wood. It was not: wood is tougher than ice, the
+collapse took longer, and the screenshot landed in the middle of a sweep
+that had always been there. Checking out the previous commit and changing
+one word in one level file is what settled it — and that is the check to
+run first next time, not last.

@@ -23,7 +23,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import artlib
 from sheetdefs import (DRAW_CREATURE_W, DRAW_CREATURE_H,
-                       DRAW_BLOCK_W, DRAW_BLOCK_H,
                        BIRDS, PIGS, CREATURE_FRAMES, CREATURE_W, CREATURE_H,
                        CREATURE_COLS, BLOCK_PIECES, BLOCK_SETS, BLOCK_W,
                        BLOCK_H, BLOCK_COLS, SCENERY_CELLS, SCENERY_W,
@@ -327,128 +326,104 @@ def draw_pig(body, belly, snout, gear, frame):
 # ---------------------------------------------------------------------------
 #  BLOCKS — ten shapes, painted in each material set's four pens.
 # ---------------------------------------------------------------------------
-def draw_block(piece, pens, thin=False):
-    """`thin` draws the whole set as light timber: everything narrower, and
-    the uprights genuinely slender rather than a cell painted in."""
-    face, light, dark, detail = pens
+def draw_block(piece, pens):
+    """One piece of timber, drawn at the size it is shown at.
+
+    These used to be sixteen-pixel drawings put through reduce_cell, and
+    that is why they came out off-centre and clipped: the coordinates said
+    sixteen and the canvas said ten. Ten is not a size you reduce INTO.
+    Every feature here is one or two pixels across, and a majority vote on
+    a two-pixel feature is a coin toss — so the pieces are drawn by hand
+    at ten by ten instead.
+
+    A Mode 0 pixel is twice as wide as it is tall, so a cell shows up on
+    screen as a wide rectangle. That is what makes the members read as
+    timber: an upright three pixels across is under a third of the cell,
+    and a plank two rows deep is a plank rather than a wall with a hole
+    in it. Nothing fills its cell except the brick.
+    """
+    face, light, dark, _detail = pens
     w, h = BLOCK_W, BLOCK_H
     c = cell(w, h)
 
-    def bevel(x0, y0, x1, y1):
-        rect(c, x0, y0, x1, y0, light)
-        rect(c, x0, y0, x0, y1, light)
-        rect(c, x0, y1, x1, y1, dark)
-        rect(c, x1, y0, x1, y1, dark)
+    def plank_h(y0, y1):
+        """A member lying flat: lit along the top, in shadow underneath,
+        with sawn ends and grain running the long way."""
+        rect(c, 0, y0, w - 1, y1, face)
+        rect(c, 0, y0, w - 1, y0, light)
+        rect(c, 0, y1, w - 1, y1, dark)
+        rect(c, 0, y0, 0, y1, dark)
+        rect(c, w - 1, y0, w - 1, y1, dark)
+        if y1 - y0 >= 2:                     # grain, if there is a face left
+            for x in range(2, w - 2, 3):     # to put it on
+                put(c, x, (y0 + y1) // 2, dark)
 
-    # Uprights are drawn NARROW: a pillar that fills its cell reads as a
-    # wall, and the whole point of one is that it is the thing you knock
-    # over. These are the half-widths either side of the cell's middle.
-    vw = 3 if thin else 4          # beam_v
-    pw = 2 if thin else 3          # pillar shaft
-    hy = 3 if thin else 7          # half-height of a horizontal plank
+    def plank_v(x0, x1):
+        """...and one standing on end. The lit edge goes on the left, so a
+        row of uprights all catch the light from the same side."""
+        rect(c, x0, 0, x1, h - 1, face)
+        rect(c, x0, 0, x0, h - 1, light)
+        rect(c, x1, 0, x1, h - 1, dark)
+        rect(c, x0, 0, x1, 0, dark)
+        rect(c, x0, h - 1, x1, h - 1, dark)
+        if x1 - x0 >= 2:
+            for y in range(2, h - 2, 3):
+                put(c, (x0 + x1) // 2, y, dark)
 
-    def grain_h(x0, y0, x1, y1):
-        """Length-wise grain and darker cut ends — the two things that make
-        a shape read as a piece of timber rather than a painted column."""
-        for y in range(y0 + 1, y1, 2):
-            for x in range(x0 + 2, x1 - 1, 3):
+    if piece == 'beam_h':                    # the standard lintel
+        plank_h(4, 6)
+    elif piece == 'beam_v':                  # the standard upright
+        plank_v(4, 6)
+    elif piece == 'cube':                    # a sawn offcut, load bearing
+        rect(c, 2, 2, 7, 7, face)
+        rect(c, 2, 2, 7, 2, light)
+        rect(c, 2, 7, 7, 7, dark)
+        rect(c, 2, 2, 2, 7, light)
+        rect(c, 7, 2, 7, 7, dark)
+        for y in (4, 6):
+            for x in range(3, 7, 2):
                 put(c, x, y, dark)
-        rect(c, x0, y0, x0, y1, dark)
-        rect(c, x1, y0, x1, y1, dark)
-
-    def grain_v(x0, y0, x1, y1):
-        for x in range(x0 + 1, x1, 2):
-            for y in range(y0 + 2, y1 - 1, 3):
+    elif piece == 'brick':                   # the one piece that IS its cell
+        rect(c, 0, 1, w - 1, h - 2, face)
+        rect(c, 0, 1, w - 1, 1, light)
+        rect(c, 0, h - 2, w - 1, h - 2, dark)
+        for y in (4, 7):                     # courses...
+            rect(c, 0, y, w - 1, y, dark)
+        for i, y in enumerate((2, 5, 8)):    # ...broken by staggered joints
+            for x in range(1 + 4 * (i % 2), w, 5):
                 put(c, x, y, dark)
-        rect(c, x0, y0, x1, y0, dark)
-        rect(c, x0, y1, x1, y1, dark)
-
-    if piece == 'beam_h':
-        rect(c, 0, 8 - hy, w - 1, 7 + hy, face)
-        if thin:
-            grain_h(0, 8 - hy, w - 1, 7 + hy)
-        else:
-            bevel(0, 8 - hy, w - 1, 7 + hy)
-            for y in (8 - hy + 2, 5 + hy):
-                for x in range(2, w - 2, 3):
-                    put(c, x, y, detail)
-    elif piece == 'beam_v':
-        rect(c, 8 - vw, 0, 7 + vw, h - 1, face)
-        if thin:
-            grain_v(8 - vw, 0, 7 + vw, h - 1)
-        else:
-            bevel(8 - vw, 0, 7 + vw, h - 1)
-            for x in (5, 10):
-                for y in range(1, h - 1, 3):
-                    put(c, x, y, detail)
-    elif piece == 'cube':
-        m = 3 if thin else 0
-        rect(c, m, m, w - 1 - m, h - 1 - m, face)
-        if thin:
-            grain_h(m, m, w - 1 - m, h - 1 - m)      # a sawn offcut
-        else:
-            bevel(m, m, w - 1 - m, h - 1 - m)
-            rect(c, m + 3, m + 3, w - 4 - m, m + 3, detail)
-    elif piece == 'brick':
-        m = 3 if thin else 0
-        rect(c, m, m, w - 1 - m, h - 1 - m, face)
-        for y in range(m, h - m, 5):
-            rect(c, m, y, w - 1 - m, y, dark)
-        for i, y in enumerate(range(m + 2, h - m - 1, 5)):
-            off = m if i % 2 else m + 4
-            for x in range(off, w - m, 8):
-                rect(c, x, y - 2, x, y + 2, dark)
-        bevel(m, m, w - 1 - m, h - 1 - m)
-    elif piece in ('roof_l', 'roof_r'):
-        if piece == 'roof_l':
-            triangle(c, [(0, h - 1), (w - 1, 0), (w - 1, h - 1)], face)
-            if thin:                       # a rafter, not a solid wedge
-                triangle(c, [(4, h - 1), (w - 1, 4), (w - 1, h - 1)], T)
-            for i in range(0, h, 3):
-                put(c, w - 1 - i, i, light)
-        else:
-            triangle(c, [(0, 0), (w - 1, h - 1), (0, h - 1)], face)
-            if thin:
-                triangle(c, [(0, 4), (w - 5, h - 1), (0, h - 1)], T)
-            for i in range(0, h, 3):
-                put(c, i, i, light)
+    elif piece in ('roof_l', 'roof_r'):      # a rafter, not a solid wedge
+        for i in range(h):
+            x = i if piece == 'roof_r' else w - 1 - i
+            put(c, x, i, light)
+            put(c, x - 1 if piece == 'roof_r' else x + 1, i, face)
         rect(c, 0, h - 1, w - 1, h - 1, dark)
-    elif piece == 'arch':
-        rect(c, 0, 4, w - 1, h - 1, face)
-        ellipse(c, 7.5, 4, 8, 4, face)
-        ellipse(c, 7.5, h, 4 if not thin else 6, 7 if not thin else 9, T)
-        rect(c, 0, 4, 0, h - 1, light)
-        rect(c, w - 1, 4, w - 1, h - 1, dark)
-    elif piece == 'pillar' and thin:
-        rect(c, 8 - pw, 0, 7 + pw, h - 1, face)      # a bare stick
-        grain_v(8 - pw, 0, 7 + pw, h - 1)
-        put(c, 8 - pw, 5, face)                      # a knot or two
-        put(c, 7 + pw, 11, face)
-    elif piece == 'pillar':
-        rect(c, 8 - pw, 0, 7 + pw, h - 1, face)
-        cap = 2 if thin else 4
-        rect(c, 8 - pw - cap, 0, 7 + pw + cap, 1, face)         # capital
-        rect(c, 8 - pw - cap, h - 2, 7 + pw + cap, h - 1, face)  # base
-        bevel(8 - pw, 0, 7 + pw, h - 1)
-        rect(c, 8 - pw - cap, 0, 7 + pw + cap, 0, light)
-        rect(c, 8 - pw - cap, h - 1, 7 + pw + cap, h - 1, dark)
-    elif piece == 'slab':
-        t = 2 if thin else 3
-        rect(c, 0, 8 - t, w - 1, 7 + t, face)
-        if thin:
-            grain_h(0, 8 - t, w - 1, 7 + t)
-        else:
-            bevel(0, 8 - t, w - 1, 7 + t)
-            rect(c, 3, 7, w - 4, 7, detail)
-    elif piece == 'crate':
-        m = 2 if thin else 0
-        rect(c, m, m, w - 1 - m, h - 1 - m, face)
-        rect(c, m + 2, m + 2, w - 3 - m, h - 3 - m, T)
-        span = h - 1 - 2 * m
-        for i in range(span + 1):
-            put(c, m + 1 + i * (w - 3 - 2 * m) // max(span, 1), m + i, dark)
-            put(c, w - 2 - m - i * (w - 3 - 2 * m) // max(span, 1), m + i, dark)
-        bevel(m, m, w - 1 - m, h - 1 - m)
+    elif piece == 'arch':                    # a lintel on two short legs
+        plank_h(0, 1)
+        rect(c, 0, 2, 1, h - 1, face)
+        rect(c, w - 2, 2, w - 1, h - 1, face)
+        rect(c, 0, 2, 0, h - 1, light)
+        rect(c, 1, 2, 1, h - 1, dark)
+        rect(c, w - 2, 2, w - 2, h - 1, light)
+        rect(c, w - 1, 2, w - 1, h - 1, dark)
+    elif piece == 'pillar':                  # a bare stick, the slenderest
+        plank_v(4, 5)
+        put(c, 4, 3, dark)                   # a knot or two
+        put(c, 5, 7, face)
+    elif piece == 'slab':                    # a shelf, one plank deep
+        rect(c, 0, 5, w - 1, 5, light)
+        rect(c, 0, 6, w - 1, 6, dark)
+        rect(c, 0, 5, 0, 6, dark)
+        rect(c, w - 1, 5, w - 1, 6, dark)
+    elif piece == 'crate':                   # hollow, and the weak point
+        rect(c, 1, 1, w - 2, h - 2, face)
+        rect(c, 3, 3, w - 4, h - 4, T)
+        rect(c, 1, 1, w - 2, 1, light)
+        rect(c, 1, h - 2, w - 2, h - 2, dark)
+        rect(c, 1, 1, 1, h - 2, light)
+        rect(c, w - 2, 1, w - 2, h - 2, dark)
+        for i in range(2, h - 2):            # a diagonal brace across it
+            put(c, 1 + (i - 2) * (w - 4) // (h - 5), i, dark)
     return c
 
 
@@ -626,10 +601,10 @@ def build_creatures():
 
 def build_blocks():
     cells = []
-    for _set, _tough, pens, thin in BLOCK_SETS:
+    for _set, _tough, pens in BLOCK_SETS:
         for piece, _hp, _tall in BLOCK_PIECES:
-            cells.append(draw_block(piece, pens, thin))
-    return [reduce_cell(c, BLOCK_W, BLOCK_H) for c in cells]
+            cells.append(draw_block(piece, pens))
+    return cells
 
 
 def build_scenery():

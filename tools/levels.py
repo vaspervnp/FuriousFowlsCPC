@@ -74,12 +74,11 @@ SLING_CH = 'Y'
 
 SET_NAMES = [s[0] for s in BLOCK_SETS]
 
-#  The tiers run from the flimsiest material to the toughest, so a fort
-#  gets harder to knock down as well as more elaborate. The order is
-#  derived from the sets' own toughness rather than written out, so adding
-#  a material drops it into the right place by itself.
-SET_ORDER = [i for i, _ in sorted(enumerate(BLOCK_SETS),
-                                  key=lambda e: e[1][1])]
+#  There is one material now, so `set` is a constant and the tiering that
+#  used to walk from the flimsiest to the toughest is gone with it. What
+#  makes a late level hard is how the fort is BUILT, not what it is made
+#  of. The field stays in the file format: it costs one byte and it is the
+#  hook a second material would hang on.
 BIRD_NAMES = [b[0] for b in BIRDS]
 PIG_NAMES = [p[0] for p in PIGS]
 
@@ -185,9 +184,8 @@ def s_stack(col, n):
 
 def default_level(n):
     """n is 1..40."""
-    tier = (n - 1) * len(SET_ORDER) // LEVELS   # every material gets a turn
-    step = (n - 1) % 8                          # ...and every fort shape too
-    mset = SET_NAMES[SET_ORDER[tier]]
+    step = (n - 1) % 8                          # every fort shape gets a turn
+    mset = SET_NAMES[0]
 
     #  Two structures from the very first level, three once the birds get
     #  numerous. A single hut is a target; a hut with an outbuilding is a
