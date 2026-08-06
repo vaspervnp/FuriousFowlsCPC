@@ -220,7 +220,6 @@ aim_dots:
                                     ; nothing has undotted for us — and
                                     ; recording a dot as its own background
                                     ; means the next erase paints it back.
-        call    px_use_dots
         ld      a,(mode0_pen_bytes+PEN_WHITE)
         ld      (pp_pen),a
         ld      a,AIM_DOT_START
@@ -255,7 +254,7 @@ ad_dx:
         sub     b                   ; screen y grows downward
         pop     hl
         call    plot_px
-        call    px_keep
+        call    dot_keep
         ld      a,(ad_d)
         add     a,AIM_DOT_STEP
         ld      (ad_d),a
@@ -278,6 +277,7 @@ px_keep:
         ld      a,h
         or      l
         ret     z                   ; plot_px clipped it: nothing to keep
+        ld      (pp_addr_last),hl   ; keep it before clearing the flag
         ld      hl,0
         ld      (pp_addr),hl
         ld      hl,(px_n)
@@ -357,14 +357,75 @@ px_base:        dw      0
 px_n:           dw      0
 px_max:         db      0
 
-; ---- the two users -------------------------------------------------------
-aim_undot:
-        call    px_use_dots
-        jp      px_undo
+; ---- the aim dots keep their own books ------------------------------------
+;  Not the shared px_* pair. Five pixels with one owner and one caller is
+;  a page of straight-line code; sharing it with the elastic meant a
+;  selector that had to be correct at every entry, and it was not.
+dot_keep:
+        ld      hl,(pp_addr)
+        ld      a,h
+        or      l
+        ret     z                   ; plot_px clipped it: nothing to keep
+        ld      (pp_addr_last),hl   ; keep it before clearing the flag
+        ld      hl,0
+        ld      (pp_addr),hl
+        ld      a,(dot_n)
+        cp      AIM_DOT_N
+        ret     nc
+        ld      e,a
+        inc     a
+        ld      (dot_n),a
+        ld      d,0
+        ld      hl,dot_slot
+        add     hl,de
+        add     hl,de
+        add     hl,de               ; index * 3
+        ld      de,(pp_addr_last)
+        ld      (hl),e
+        inc     hl
+        ld      (hl),d
+        inc     hl
+        ld      a,(pp_prev)
+        ld      (hl),a
+        ret
 
+;  Backwards, because two dots can land in one byte and the later slot then
+;  kept that byte with the earlier dot already in it.
+aim_undot:
+        ld      a,(dot_n)
+        or      a
+        ret     z
+        ld      b,a
+        ld      l,a
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,de
+        ld      de,dot_slot
+        add     hl,de               ; one past the last slot
+du_next:
+        dec     hl
+        ld      a,(hl)
+        dec     hl
+        ld      d,(hl)
+        dec     hl
+        ld      e,(hl)
+        ld      (de),a
+        djnz    du_next
+        xor     a
+        ld      (dot_n),a
+        ret
+
+; ---- the elastic still uses the shared pair: it is seventy-odd pixels,
+;      not five, and one caller either way.
 band_undo:
         call    px_use_band
         jp      px_undo
+
+dot_n:          db      0
+dot_slot:       ds      AIM_DOT_N*3
+pp_addr_last:   dw      0
 
 ad_d:           db      0
 ad_n:           db      0
