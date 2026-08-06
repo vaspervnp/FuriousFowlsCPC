@@ -5,7 +5,7 @@ set     wood
 theme   day
 sling   24
 birds   red yellow red
-scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_a 44 104
+scenery cloud_a 4 10 ; cloud_a 168 26 ; tree_a 44 40 ; bush_a 208 104
 map
 ................caac............
 ...............hhhhhh...........

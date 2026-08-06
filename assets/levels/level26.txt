@@ -5,7 +5,7 @@ set     wood
 theme   night
 sling   24
 birds   red yellow blue black white red
-scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_a 44 104 ; tree_b 208 40
+scenery cloud_b 96 8 ; tree_b 44 40 ; tree_b 208 40 ; rock 256 104
 map
 .........caac............SS.....
 ........hhhhhh...P......i--i....

@@ -67,13 +67,21 @@ title_show:
         ld      hl,str_start
         ld      de,#268C            ; D = x 38, E = y 140
         call    title_text
+;  A IS THE TOP PEN, and title_text reads it on entry. The digits used to
+;  be drawn with whatever num6 happened to leave in A — usually a small
+;  number, so the top four rows of the score came out in pen 9, dark blue
+;  on a black screen, and the number read as half a number.
         ld      a,PEN_YELLOW        ; HI SCORE nnnnnn, centred
         ld      (tb_pen2),a
+        ld      a,PEN_WHITE
         ld      hl,str_hi
         ld      de,#2280            ; D = x 34, E = y 128
         call    title_text
         ld      hl,hi_score
         call    num6
+        ld      a,PEN_YELLOW        ; the number itself in one colour: it is
+        ld      (tb_pen2),a         ; read at a glance, not admired
+        ld      a,PEN_YELLOW
         ld      hl,num6_buf
         ld      de,#5880            ; D = x 88, E = y 128
         call    title_text

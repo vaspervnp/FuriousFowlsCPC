@@ -5,7 +5,7 @@ set     wood
 theme   dawn
 sling   24
 birds   red yellow blue red
-scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_b 44 104 ; tree_b 208 40
+scenery cloud_b 96 14 ; tree_b 44 40 ; bush_b 208 104 ; boulder 256 104
 map
 ........./.\....................
 .........hhh....................

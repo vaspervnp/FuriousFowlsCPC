@@ -5,7 +5,7 @@ set     wood
 theme   desert
 sling   24
 birds   red yellow blue black white green
-scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_b 44 104 ; tree_a 208 40
+scenery cloud_b 152 12 ; bush_b 44 104 ; bush_a 208 104 ; rock 256 104
 map
 ................K...............
 ................/P\.....io......

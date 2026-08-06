@@ -5,7 +5,7 @@ set     wood
 theme   dusk
 sling   24
 birds   red yellow blue black red
-scenery cloud_a 16 10 ; cloud_b 188 26 ; bush_a 44 104 ; tree_b 208 40
+scenery cloud_b 0 30 ; cloud_b 196 40 ; tree_a 44 40 ; tree_a 208 40
 map
 .................P..............
 ...............c.c..............

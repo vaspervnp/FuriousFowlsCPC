@@ -20,11 +20,11 @@
 ;                 below, so editing a sound cannot silently shift the rest
 ;                 into the stack — the assert in main.asm catches it.
 ;    #3F80-#3FFF  stack (grows down from #4000)
-;    #4000-#87FF  code, scenery RLE, level records, tables
-;    #8800-#8B1F  block art, 16 pieces x 50 B                 (800)
-;    #8B20-#8CB4  rot_map   : the four tilt maps              (400)
-;    #8CC0-#A1FF  the level records                          (5440)
-;    #A200-#BB7F  game state
+;    #4000-#8AFF  code, scenery RLE, tables
+;    #8B00-#8E1F  block art, 16 pieces x 50 B                 (800)
+;    #8E20-#8FB4  rot_map   : the four tilt maps              (400)
+;    #9000-#A1FF  the level records                          (4608)
+;    #A200-#BD9F  game state
 ;    #C000-#FFFF  video RAM
 ;
 ;  The art is too big to live in one loadable image below #C000, so the
@@ -70,22 +70,22 @@ NP2NIB                  equ #0300
 CREATURE_ART            equ #0400
 CREATURE_STAGE          equ #C000   ; where the loader parks it
 
-;  ONE material set is 800 bytes of block art where five sets of ten
-;  pieces were 2500, so the art starts two kilobytes later and the code
-;  bank gets those two kilobytes — the scarce thing here is code space,
-;  not the space above #8000.
-BLOCK_ART               equ #8800
+;  Everything above the code is packed together and pushed as high as it
+;  will go, because the code bank is the only part of this map that is
+;  ever short. The three holes that used to sit between these blocks came
+;  to 1.7 KB of nothing while the assembler had 249 bytes left.
+BLOCK_ART               equ #8B00
 ;  The tilt maps are read once per level load and never written. They
 ;  used to sit in the code bank, where a kilobyte was a sixteenth of
 ;  everything; there is room for them here, behind the block art and
 ;  still inside the same loaded image.
-ROT_MAP_BASE            equ #8B20
+ROT_MAP_BASE            equ #8E20
 ;  The fifty level records used to ride in the code bank, where they
 ;  were the single biggest thing in it. There is four and a half kilobytes
 ;  of nothing between the tilt maps and the state block, they are read-only
 ;  and they are already part of the loaded image — so they live here now,
 ;  and the code bank got a fifth of itself back.
-LEVEL_DATA_BASE         equ #8CC0
+LEVEL_DATA_BASE         equ #9000
 ;  The state block is about six and a half kilobytes and it used to start
 ;  at #9E00, which left two kilobytes of nothing between its end and video
 ;  RAM. Fifty level records needed those two kilobytes more than the gap

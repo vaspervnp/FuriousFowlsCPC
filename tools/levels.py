@@ -120,6 +120,39 @@ THEMES = [
 ]
 THEME_NAMES = [t[0] for t in THEMES]
 
+# ---------------------------------------------------------------------------
+#  ...and what stands about in it.
+#
+#  Scenery draws BEHIND the blocks, so it may go where the forts go — a
+#  rock at the far right reads as an outcrop behind the annexe rather than
+#  as something in the way. The two patches of BARE ground are narrow,
+#  though: x 40..80 between the slingshot and the outbuilding, and
+#  x 208..240 between the main fort and the annexe. Both are 32 px, which
+#  is one cell, so a tree or a bush fits there and the 64-px-wide rock does
+#  not — it goes at the edge of the world instead.
+#
+#  Per theme: the clouds, what stands in each of the two gaps, and whether
+#  there is an outcrop. `None` means nothing goes there, which is how the
+#  desert gets no trees and the night sky gets almost no cloud.
+# ---------------------------------------------------------------------------
+DECOR = {
+    #           clouds: (kind, x, y)              left      right     far
+    'day':    ([('cloud_a', 16, 10), ('cloud_a', 188, 26)],
+               'tree_a', 'bush_a', None),
+    'dawn':   ([('cloud_b', 120, 14)],
+               'tree_b', 'bush_b', 'boulder'),
+    'dusk':   ([('cloud_b', 24, 30), ('cloud_b', 180, 40)],
+               'tree_a', 'tree_a', None),
+    'night':  ([('cloud_b', 96, 8)],
+               'tree_b', 'tree_b', 'rock'),
+    'snow':   ([('cloud_a', 8, 34), ('cloud_a', 176, 20)],
+               'tree_b', 'tree_b', None),
+    'desert': ([('cloud_b', 140, 12)],
+               'bush_b', 'bush_a', 'rock'),
+}
+
+GAP_LEFT, GAP_RIGHT, FAR_EDGE = 44, 208, 256
+
 
 def assert_strata():
     want = SCREEN_LINES_TOTAL - GROUND_Y
@@ -335,10 +368,22 @@ SHAPES = [
 ]
 
 
+def clamp4(x, lo, hi):
+    """Scenery x must be a multiple of four: the column renderer works in
+    4-pixel columns and compile_level refuses anything else."""
+    return max(lo, min(hi, x)) // 4 * 4
+
+
 def default_level(n):
     """n is 1..40."""
     grade = (n - 1) * 8 // LEVELS       # 0..7: how much gets built
     shape = (n - 1) % 8                 # ...and which shapes, for variety
+
+    #  The sky, the ground and what stands about in it change every few
+    #  forts, so the run of fifty does not look like one long afternoon.
+    #  Seven is coprime with six, so the cycle does not line up with the
+    #  eight-shape rotation and no two neighbouring forts share a look.
+    theme = THEME_NAMES[(n // 7) % len(THEME_NAMES)]
 
     blocks, pigs = [], []
 
@@ -445,23 +490,23 @@ def default_level(n):
     cast = BIRD_NAMES[:min(len(BIRD_NAMES), 2 + n // 7)]
     birds = [cast[i % len(cast)] for i in range(n_birds)]
 
-    #  Scenery is BACKGROUND — blocks draw over it — but a boulder behind a
-    #  timber fort still makes the fort hard to read, and three zones of
-    #  building leave only two gaps of bare ground: x 40..80, between the
-    #  slingshot and the outbuilding, and x 208..240, between the main fort
-    #  and the annex. Both are 32 px, which is one scenery cell. The
-    #  64-px-wide rock and boulder therefore go unused by the default
-    #  fifty; they are still there for a hand-built level with room.
-    scenery = [('cloud_a', 16, 10), ('cloud_b', 188, 26)]
-    scenery.append(('bush_a' if n % 3 else 'bush_b', 44, GROUND_Y - 64))
-    if n % 5:
-        scenery.append(('tree_a' if n % 2 else 'tree_b', 208, GROUND_Y - 128))
-
-    #  The sky and the ground change every few forts, so the run of fifty
-    #  does not look like one long afternoon. Seven is coprime with six, so
-    #  the cycle does not line up with the eight-shape rotation and no two
-    #  neighbouring forts share a look.
-    theme = THEME_NAMES[(n // 7) % len(THEME_NAMES)]
+    #  The decoration follows the theme. Cloud positions drift with the
+    #  fort number so that two forts sharing a theme are not the same
+    #  picture — a multiple of four, because the renderer works in
+    #  4-pixel columns and the compiler refuses anything else.
+    clouds, left, right, far = DECOR[theme]
+    scenery = []
+    for i, (kind, x, y) in enumerate(clouds):
+        drift = ((n * 12 + i * 40) % 48) - 24
+        scenery.append((kind, clamp4(x + drift, 0, WORLD_PX - 64), y))
+    if left:
+        scenery.append((left, GAP_LEFT,
+                        GROUND_Y - (128 if left.startswith('tree') else 64)))
+    if right:
+        scenery.append((right, GAP_RIGHT,
+                        GROUND_Y - (128 if right.startswith('tree') else 64)))
+    if far:
+        scenery.append((far, FAR_EDGE, GROUND_Y - 64))
 
     return dict(name='FORT %02d' % n, set=SET_NAMES[0], theme=theme,
                 sling=24, birds=birds,

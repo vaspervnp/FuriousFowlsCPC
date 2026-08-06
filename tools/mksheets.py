@@ -32,6 +32,7 @@ T = artlib.TRANSPARENT
 BLACK, WHITE = 1, 2
 LEAF, LEAF2, TRUNK, BARK = 7, 6, 11, 4
 STONE, STONE2, SHADE = 10, 2, 14
+BERRY = 3                                    # the cheapest detail in the game
 
 
 # ---------------------------------------------------------------------------
@@ -506,28 +507,48 @@ def slice_object(canvas):
     return cells
 
 
+#  ---- shaping -------------------------------------------------------------
+#  There is no texture in here any more. A speckled canopy and a faceted,
+#  glinting rock were tried and they read as television snow and as snow
+#  proper — at 32 pixels wide, ANY mark on a shape competes with the shape.
+#  What is left is the silhouette, and it does all the work: overlapping
+#  lumps of different sizes in the wrong places, and a scatter of single
+#  pixels around the edge so that nothing is a smooth ellipse.
+def fringe(c, pts, pen):
+    for x, y in pts:
+        put(c, x, y, pen)
+
+
+def lumps(c, pts, pen):
+    for cx, cy, rx, ry in pts:
+        ellipse(c, cx, cy, rx, ry, pen)
+
+
 def tree_oak():                              # 32x128, broad and lumpy
     """Nothing here is centred and nothing is mirrored. The canopy leans
-    right, the trunk leans with it, and the lobes are all different sizes —
-    a tree drawn symmetrically reads as a logo, not as a plant."""
+    right, the trunk leans with it, and no two lobes are the same size — a
+    tree drawn symmetrically reads as a logo, not as a plant."""
     c = cell(32, 128)
+    ellipse(c, 9, 124, 10, 6, TRUNK)         # roots, unevenly flared
+    ellipse(c, 23, 125, 8, 5, TRUNK)
     rect(c, 13, 66, 20, 127, TRUNK)          # trunk, leaning a little right
     rect(c, 12, 84, 19, 127, TRUNK)
     rect(c, 13, 66, 14, 100, BARK)           # the sunlit edge, and it stops
     rect(c, 12, 100, 13, 122, BARK)          # short of the roots
-    ellipse(c, 10, 124, 9, 5, TRUNK)         # roots, unevenly flared
-    ellipse(c, 23, 125, 7, 4, TRUNK)
-    rect(c, 19, 74, 27, 76, TRUNK)           # two branches, different lengths
-    rect(c, 25, 71, 27, 76, TRUNK)
+    rect(c, 19, 74, 27, 76, TRUNK)           # branches, all different
+    rect(c, 25, 68, 27, 76, TRUNK)
     rect(c, 6, 88, 13, 90, TRUNK)
 
-    ellipse(c, 17, 42, 15, 40, LEAF)         # the mass, off centre
-    for cx, cy, rx, ry in ((6, 34, 8, 7), (25, 30, 10, 9), (14, 11, 12, 9),
-                           (4, 58, 7, 8), (27, 61, 9, 7), (20, 68, 8, 6),
-                           (9, 70, 6, 5)):
-        ellipse(c, cx, cy, rx, ry, LEAF)
-    for cx, cy, rx, ry in ((12, 26, 8, 5), (18, 14, 8, 5)):
-        ellipse(c, cx, cy, rx, ry, LEAF2)    # where the sun gets in
+    lumps(c, ((17, 42, 15, 40), (6, 34, 8, 7), (25, 30, 10, 9),
+              (14, 11, 12, 9), (4, 58, 7, 8), (27, 61, 9, 7),
+              (20, 68, 8, 6), (9, 70, 6, 5), (29, 45, 5, 8),
+              (2, 44, 5, 7), (11, 62, 7, 6)), LEAF)
+    lumps(c, ((12, 24, 9, 6), (18, 12, 9, 5), (6, 40, 5, 4),
+              (24, 26, 6, 4), (10, 55, 5, 3), (27, 48, 4, 4)), LEAF2)
+    fringe(c, ((3, 27), (30, 22), (1, 51), (31, 36), (13, 1), (24, 5),
+               (5, 66), (28, 68), (17, 76), (7, 8), (0, 40), (21, 78),
+               (2, 60), (30, 55)), LEAF)
+    fringe(c, ((9, 13), (20, 4), (2, 37), (26, 20)), LEAF2)
     return c
 
 
@@ -537,19 +558,23 @@ def tree_pine():                             # 32x128, a narrow spire
     hangs a different distance, and there is not a straight edge or a point
     anywhere on it."""
     c = cell(32, 128)
-    rect(c, 14, 98, 19, 127, TRUNK)
-    rect(c, 14, 98, 15, 127, BARK)
-    ellipse(c, 12, 125, 8, 4, TRUNK)
-    ellipse(c, 22, 126, 6, 3, TRUNK)
+    ellipse(c, 12, 125, 9, 5, TRUNK)
+    ellipse(c, 22, 126, 7, 4, TRUNK)
+    rect(c, 14, 92, 19, 127, TRUNK)
+    rect(c, 14, 92, 15, 127, BARK)
 
     #  (centre x, centre y, half width, half depth) — boughs, widening as
     #  they go down, alternately reaching further left and further right.
-    for cx, cy, rx, ry in ((16, 8, 5, 6), (14, 17, 8, 6), (18, 25, 9, 6),
-                           (13, 35, 12, 7), (19, 45, 13, 7), (14, 56, 15, 8),
-                           (18, 67, 15, 8), (15, 79, 16, 8), (17, 90, 14, 8)):
-        ellipse(c, cx, cy, rx, ry, LEAF)
-    for cx, cy, rx, ry in ((13, 34, 7, 3), (12, 66, 8, 3)):
-        ellipse(c, cx, cy, rx, ry, LEAF2)    # the lit top of each bough
+    boughs = ((16, 8, 5, 6), (14, 17, 8, 6), (18, 25, 9, 6),
+              (13, 35, 12, 7), (19, 45, 13, 7), (14, 56, 15, 8),
+              (18, 67, 15, 8), (15, 79, 16, 8), (17, 90, 14, 8))
+    lumps(c, boughs, LEAF)
+    for i, (cx, cy, rx, ry) in enumerate(boughs):
+        if i % 2 == 0:                       # the lit side of alternate ones
+            ellipse(c, cx - rx // 3, cy - ry // 2, rx // 2, 2, LEAF2)
+    fringe(c, ((1, 58), (30, 47), (0, 80), (31, 69), (16, 1), (3, 92),
+               (28, 93), (2, 37), (29, 26), (4, 70), (27, 58), (6, 84)),
+           LEAF)
     return c
 
 
@@ -562,18 +587,77 @@ def bush(big):                               # 32x64
     ellipse(c, 15.5, 62, 16, 63 - base, LEAF)
     if big:
         lobes = ((6, 8, 8, 7), (24, 5, 10, 9), (15, 0, 11, 8),
-                 (29, 13, 6, 6), (2, 16, 5, 5))
-        lit = ((13, 9, 9, 4),)
-
+                 (29, 13, 6, 6), (2, 16, 5, 5), (19, 14, 7, 6))
+        lit = ((13, 9, 9, 4), (25, 3, 6, 3))
+        edge = ((1, 6), (30, 9), (17, -7), (26, -2), (4, 1), (11, -6),
+                (31, 17))
     else:
-        lobes = ((9, 4, 10, 8), (22, 8, 8, 7), (16, 1, 8, 6), (3, 12, 5, 5))
-        lit = ((11, 6, 8, 4),)
+        lobes = ((9, 4, 10, 8), (22, 8, 8, 7), (16, 1, 8, 6),
+                 (3, 12, 5, 5), (27, 4, 5, 5))
+        lit = ((11, 6, 8, 4), (20, 4, 5, 3))
+        edge = ((0, 8), (31, 12), (14, -5), (24, 0), (5, 2), (19, -4))
 
-    for cx, dy, rx, ry in lobes:
-        ellipse(c, cx, base + dy, rx, ry, LEAF)
-    for cx, dy, rx, ry in lit:
-        ellipse(c, cx, base + dy, rx, ry, LEAF2)
+    lumps(c, [(cx, base + dy, rx, ry) for cx, dy, rx, ry in lobes], LEAF)
+    lumps(c, [(cx, base + dy, rx, ry) for cx, dy, rx, ry in lit], LEAF2)
+    fringe(c, [(x, base + dy) for x, dy in edge], LEAF)
     rect(c, 0, 63, 31, 63, LEAF)
+    return c
+
+
+def rock_mass(c, lumps_, moss, edge):
+    """Grey, and that is all the grey there is. The lit faces and the
+    granite speckle that were here read as SNOW on the rock; what makes it
+    a rock is the broken outline and a little green caught on the top.
+
+    The outline is broken by building the mass out of a dozen lumps of
+    quite different sizes — a big one does the bulk and the small ones sit
+    proud of it around the edge, so the silhouette steps instead of
+    curving. Four big ellipses gave a dome; a dome is a hill."""
+    lumps(c, lumps_, STONE)
+    for cx, cy in moss:                      # tufts, not a painted stripe
+        ellipse(c, cx, cy, 4, 2, LEAF)
+        ellipse(c, cx - 3, cy + 1, 2, 1, LEAF)
+        ellipse(c, cx + 4, cy + 1, 3, 1, LEAF)
+        put(c, cx - 1, cy - 2, LEAF)
+        put(c, cx + 3, cy - 2, LEAF)
+    fringe(c, edge, STONE)
+    rect(c, 0, 63, 63, 63, BLACK)
+
+
+def boulder_round():                         # 64x64
+    """Weathered and rounded, to sit beside the jagged one — a skyline of
+    nothing but sharp peaks reads as scenery from a different game."""
+    c = cell(64, 64)
+    rect(c, 0, 56, 63, 63, STONE)
+    rock_mass(
+        c,
+        ((28, 46, 27, 20), (12, 51, 12, 11), (48, 49, 15, 14),
+         (58, 55, 7, 8), (36, 37, 12, 10), (6, 55, 8, 7),
+         (21, 33, 9, 8), (44, 39, 7, 7), (31, 28, 7, 5),
+         (53, 43, 6, 5), (16, 42, 6, 6), (61, 51, 4, 5)),
+        ((30, 25), (49, 36)),
+        ((2, 47), (61, 47), (34, 22), (18, 30), (52, 34), (25, 24),
+         (43, 30), (8, 43), (63, 53), (39, 25), (13, 37), (57, 40)))
+    return c
+
+
+def boulder():                               # 64x64
+    """The craggy one — crags made of overlapping lumps, not triangles. It
+    keeps its broken silhouette and loses the points, which on a Mode 0
+    pixel twice as wide as it is tall came out looking like torn paper."""
+    c = cell(64, 64)
+    rect(c, 2, 52, 61, 63, STONE)
+    rock_mass(
+        c,
+        ((26, 35, 19, 19), (46, 45, 15, 13), (12, 47, 11, 11),
+         (35, 26, 10, 9), (56, 50, 9, 9), (19, 23, 8, 7),
+         (41, 37, 9, 8), (6, 52, 7, 7), (29, 18, 6, 5),
+         (50, 35, 6, 5), (14, 33, 6, 6), (33, 45, 8, 7),
+         (61, 44, 4, 5), (2, 45, 4, 5)),
+        ((27, 14), (52, 32)),
+        ((4, 43), (62, 41), (17, 15), (32, 11), (45, 27), (9, 33),
+         (54, 31), (23, 17), (60, 54), (0, 49), (38, 18), (49, 29),
+         (11, 26), (25, 12)))
     return c
 
 
@@ -610,42 +694,6 @@ def slingshot(front):
         rect(c, 23, 8, 29, 14, TRUNK)
         rect(c, 23, 8, 29, 9, BARK)
     outline(c)
-    return c
-
-
-def boulder_round():                         # 64x64
-    """Weathered and rounded, to sit beside the jagged one — a skyline of
-    nothing but sharp peaks reads as scenery from a different game."""
-    c = cell(64, 64)
-    ellipse(c, 28, 45, 29, 22, STONE)        # the mass, sitting left of centre
-    ellipse(c, 13, 51, 13, 12, STONE)
-    ellipse(c, 48, 48, 16, 15, STONE)
-    ellipse(c, 58, 55, 7, 8, STONE)
-    rect(c, 0, 56, 63, 63, STONE)
-    ellipse(c, 24, 33, 16, 7, STONE2)        # the sunlit crown, off centre
-    ellipse(c, 47, 39, 10, 4, STONE2)
-    for x, y, rx, ry in ((21, 53, 7, 2), (41, 56, 6, 3)):
-        ellipse(c, x, y, rx, ry, SHADE)      # hollows worn into the face
-    rect(c, 0, 63, 63, 63, BLACK)
-    return c
-
-
-def boulder():                               # 64x64
-    """The craggy one — but crags made of overlapping lumps, not triangles.
-    It keeps its broken silhouette and loses the points, which on a Mode 0
-    pixel that is twice as wide as it is tall came out looking like torn
-    paper anyway."""
-    c = cell(64, 64)
-    rect(c, 2, 52, 61, 63, STONE)
-    for cx, cy, rx, ry in ((26, 34, 20, 20), (46, 44, 16, 14),
-                           (12, 47, 12, 12), (35, 25, 11, 10),
-                           (56, 50, 9, 9), (20, 22, 8, 7)):
-        ellipse(c, cx, cy, rx, ry, STONE)
-    for cx, cy, rx, ry in ((23, 27, 12, 5), (48, 41, 8, 4)):
-        ellipse(c, cx, cy, rx, ry, STONE2)   # faces catching the light
-    for cx, cy, rx, ry in ((33, 46, 8, 3),):
-        ellipse(c, cx, cy, rx, ry, SHADE)    # clefts and hollows
-    rect(c, 0, 63, 63, 63, BLACK)
     return c
 
 
