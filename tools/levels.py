@@ -626,6 +626,168 @@ def s_barbican(col):
     return out
 
 
+def s_bastion(col):
+    """Six wide and ten tall: a stone-footed keep where every storey stands
+    on the one below it and nothing stands on the ground.
+
+    The footing is dressed stone, ninety points a cell, so the cheap shot
+    into the ground floor buys nothing at all — the two crates down there
+    are decoys and the floor over them never moves. The way in is upward:
+    the first storey stands on two planks, the second on two pillars, and
+    the roof the crown stands on is held by those pillars and by nothing
+    else. Take one and the roof beam is held at one end, and a beam held
+    at one end TIPS."""
+    out = []
+    #  The footing. Dressed stone at both corners, two cells high, and the
+    #  four cells between them hollow — a doorway, and two crates in it
+    #  that carry nothing whatever.
+    out += [('S', col, GRID_H - 1), ('S', col, GRID_H - 2),
+            ('S', col + 5, GRID_H - 1), ('S', col + 5, GRID_H - 2)]
+    out += [('x', col + 1, GRID_H - 1), ('x', col + 4, GRID_H - 1)]
+    #  The first floor spans the whole six and ENDS ON THE STONE — both
+    #  ends, which is the only way a beam stands.
+    out += [('h', col + dx, GRID_H - 3) for dx in range(6)]
+    #  First storey: two planks on edge, set IN from the stone so that the
+    #  floor above can end on them rather than overhang them.
+    for dx in (1, 4):
+        out += [('v', col + dx, GRID_H - 4), ('v', col + dx, GRID_H - 5)]
+    out += [('h', col + dx, GRID_H - 6) for dx in range(1, 5)]
+    #  Second storey: pillars, which are slenderer and topple, and a pane
+    #  of glass between them. Six points, six storeys up — the cell worth
+    #  aiming at is the one that costs a good shot to reach.
+    for dx in (1, 4):
+        out += [('i', col + dx, GRID_H - 7), ('i', col + dx, GRID_H - 8)]
+    out += [('g', col + 2, GRID_H - 7)]
+    out += [('h', col + dx, GRID_H - 9) for dx in range(1, 5)]
+    #  The parapet, and the roof between it.
+    out += [('x', col + 1, GRID_H - 10), ('x', col + 4, GRID_H - 10)]
+    return out
+
+
+def s_donjon(col):
+    """The last fort: a stone base, three timber storeys and a rope walk
+    across the sky. Eight cells wide, twelve rows tall, twenty-four objects.
+
+    Every floor is ONE merged eight-cell beam ending on its legs, which is
+    what buys the height: three whole floors cost three objects. Each storey
+    is two rows of clear air between a deck and the floor above it, because a
+    pig is two cells tall and a pig on every landing is the point of building
+    up instead of out.
+
+    The charge sits at the back of the ground-floor hall, two cells from the
+    RIGHT leg. Reach it and the leg, the arch standing on it and the near end
+    of the deck all go at once — and a beam held at one end only TIPS. The
+    tower does not lose a storey; it loses its right-hand side, and twelve
+    rows of timber come down with it."""
+    out = []
+    #  The stone base. Two legs, six cells of hall between them. The cheap
+    #  ground-floor shot is ninety hit points twice over, so it is not a
+    #  shot, it is a way of running out of birds. The charge is the answer.
+    for dx in (0, 7):
+        out += [('S', col + dx, GRID_H - 1), ('S', col + dx, GRID_H - 2)]
+    out += [('T', col + 5, GRID_H - 1)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(8)]
+
+    #  Storey one. An arch springs off the deck on each side with a plank
+    #  post standing on it: the arches are the doorways of the arcade the
+    #  pigs stand in, and the posts TOPPLE.
+    for dx in (0, 7):
+        out += [('a', col + dx, GRID_H - 4), ('v', col + dx, GRID_H - 5)]
+    out += [('h', col + dx, GRID_H - 6) for dx in range(8)]
+
+    #  Storey two, the glazed chamber. The panes carry nothing — they are
+    #  six hit points each and they are the only soft cell anywhere above
+    #  the ground, so they are the way in to the middle of the tower.
+    for dx in (0, 7):
+        out += [('i', col + dx, GRID_H - 7), ('i', col + dx, GRID_H - 8)]
+    out += [('g', col + 2, GRID_H - 7), ('g', col + 5, GRID_H - 7)]
+    out += [('h', col + dx, GRID_H - 9) for dx in range(8)]
+
+    #  Storey three: an open belfry with a rope walk over the top of it and
+    #  a dressed stone slung under the middle. The rope is tied at each end
+    #  to the mast directly below that end; the stone is directly under the
+    #  rope with a clear cell beneath it, so it is held by the rope and by
+    #  nothing else. Eight hit points carry ninety, thirteen rows up.
+    for dx in (0, 7):
+        out += [('i', col + dx, GRID_H - 10), ('i', col + dx, GRID_H - 11)]
+    out += [('-', col + dx, GRID_H - 12) for dx in range(8)]
+    out += [('S', col + 3, GRID_H - 11)]
+    return out
+
+
+def s_gantry(col):
+    """A siege gantry leaning on the donjon: five wide, nine rows tall, and
+    built to come down SIDEWAYS onto the fort beside it.
+
+    Place it so its right-hand column abuts the big fort's left leg —
+    s_gantry(ZONE_MAIN - 5) under s_donjon(ZONE_MAIN), which is cols 10..14
+    against cols 15..22 with no gap between them.
+
+    The whole design is which leg is which. The FAR leg, the one touching
+    the donjon, is four CRATES: eighteen hit points, the weakest structural
+    piece in the game. The NEAR leg is stone, then pillar. Both floors are
+    beams resting on one of each, so knocking the crates out leaves every
+    floor held at its NEAR end only — and a beam held at one end tips over
+    that end, which swings its far end, the masts standing on it, the rope
+    walk and the stone slung off it down and to the RIGHT, into the donjon's
+    stone leg and through the hall behind it.
+
+    And the crates are on the far side, so the shot that does it has to be
+    arced over the gantry or threaded through both of its empty bays."""
+    out = []
+    #  Near leg: stone on the ground, pillar above it. This one holds, and
+    #  it is the pivot everything else turns on.
+    out += [('S', col, GRID_H - 1), ('S', col, GRID_H - 2)]
+    #  Far leg: crates, all the way up. This one IS the level.
+    out += [('x', col + 4, GRID_H - 1), ('x', col + 4, GRID_H - 2)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(5)]
+    out += [('i', col, GRID_H - 4), ('i', col, GRID_H - 5)]
+    out += [('x', col + 4, GRID_H - 4), ('x', col + 4, GRID_H - 5)]
+    out += [('h', col + dx, GRID_H - 6) for dx in range(5)]
+    #  Two masts and a rope strung between them, with the load slung OFF
+    #  CENTRE towards the donjon so that when the gantry goes over the
+    #  stone lands on the fort and not back in its own yard.
+    for dx in (0, 4):
+        out += [('i', col + dx, GRID_H - 7), ('i', col + dx, GRID_H - 8)]
+    out += [('-', col + dx, GRID_H - 9) for dx in range(5)]
+    out += [('S', col + 3, GRID_H - 8)]
+    return out
+
+
+def s_hoist(col):
+    """Seven wide and nine tall: two stone-footed masts, a rope strung
+    between their heads, two dressed stones sitting on the rope and a third
+    slung underneath it — every one of them directly over a pig standing on
+    bare ground.
+
+    Both masts are stone at the foot and brick above that, so shooting the
+    base is a wasted bird; both are pillar at the top, where a bird has to
+    be lofted to reach them at all. Meanwhile the rope has EIGHT hit points
+    and is carrying two hundred and seventy points of dressed stone. The
+    shot is not `knock the towers over', it is `cut that one cell', and
+    eight rows of gravity does the rest.
+
+    Note what hangs. The two stones at the top REST on the rope; the load
+    at col+5 hangs UNDER it, on two cells of hanging rope, held by nothing
+    else at all. One cut and the hung stone arrives first."""
+    out = []
+    for dx in (0, 6):
+        out += [('S', col + dx, GRID_H - 1), ('S', col + dx, GRID_H - 2),
+                ('b', col + dx, GRID_H - 3)]
+        out += [('i', col + dx, GRID_H - 4 - k) for k in range(4)]
+    #  Strung between the mast heads. Each end is tied by the pillar
+    #  DIRECTLY UNDER it — that is the whole of what holds it up, and a
+    #  rope needs no more. Seven cells merge to one object, and it never
+    #  tips: it comes down whole.
+    out += [('-', col + dx, GRID_H - 8) for dx in range(7)]
+    #  The deadfall, resting on the rope's back.
+    out += [('S', col + dx, GRID_H - 9) for dx in (2, 3)]
+    #  ...and one load hung UNDER it, over the far end of the bay.
+    out += [('|', col + 5, GRID_H - 7), ('|', col + 5, GRID_H - 6),
+            ('S', col + 5, GRID_H - 5)]
+    return out
+
+
 def s_stack(col, n, ch='x'):
     return [(ch, col, GRID_H - 1 - i) for i in range(n)]
 
@@ -651,6 +813,9 @@ SHAPES = [
     lambda col, g: s_belfry(col) if g >= 3 else s_porch(col),
     lambda col, g: s_keep(col) + (s_watchtower(col, GRID_H - 7, g // 3)
                                   if g >= 3 else []),
+    lambda col, g: s_bastion(col) if g >= 4 else s_storehouse(col),
+    lambda col, g: s_donjon(col) if g >= 6 else s_granary(col),
+    lambda col, g: s_hoist(col) if g >= 5 else s_porch(col),
 ]
 SHAPE_COUNT = len(SHAPES)
 
@@ -710,11 +875,17 @@ def default_level(n):
     #  of a game: the three tallest structures take it in turn instead.
     main = shape
     if grade >= 10:
-        main = (7, 5, 10)[n % 3]        # citadel, barbican, belfry
+        main = (13, 5, 10)[n % 3]       # donjon, barbican, belfry
     blocks += SHAPES[main](ZONE_MAIN, grade)
     pigs += [('p', ZONE_MAIN + 1, GRID_H - 1)]
 
-    blocks += SHAPES[(shape + 5) % SHAPE_COUNT](ZONE_OUT, max(0, grade - 3))
+    #  The gantry is built to fall RIGHT, so it goes on the LEFT — where
+    #  falling right means falling into the main fort.
+    if grade >= 8 and n % 4 == 0:
+        blocks += s_gantry(ZONE_OUT)
+    else:
+        blocks += SHAPES[(shape + 5) % SHAPE_COUNT](ZONE_OUT,
+                                                    max(0, grade - 3))
     pigs += [('p', ZONE_OUT + 1, GRID_H - 1)]
 
     if 3 <= grade < 10:
