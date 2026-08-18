@@ -52,7 +52,8 @@ TOP_Y = GROUND_Y - GRID_H * CELL        # y of grid row 0 == 8
 WORLD_PX = GRID_W * CELL        # 320
 MAX_BIRDS = 6
 MAX_PIGS = 8
-MAX_BLOCKS = 64        # a fort of ten-pixel cells needs more of them
+MAX_BLOCKS = 72        # what is left of the state block after
+                       # seam_buf took four hundred bytes of it
 MAX_SCENERY = 12       # 10 for the level, 2 reserved for the slingshot
 MAX_LEVEL_SCENERY = 10
 
@@ -193,7 +194,13 @@ PIG_NAMES = [p[0] for p in PIGS]
 #      cols 15..22   the main fort
 #      cols 24..30   the annex
 # ===========================================================================
-ZONE_OUT, ZONE_MAIN, ZONE_ANNEX = 8, 15, 24
+#  ONE EMPTY COLUMN BETWEEN THE ZONES, and it is not decoration. A run of
+#  identical floor cells in the same row merges into one rigid beam
+#  whatever built them — so an outbuilding seven cells wide starting at 8
+#  reached column 14, the main fort's floor started at 15, and the two
+#  merged into a single beam whose ends were over thin air. Three forts
+#  came down at load because of it. The outbuilding starts at 7 now.
+ZONE_OUT, ZONE_MAIN, ZONE_ANNEX = 7, 15, 24
 ZONE_GAP = 22           # nothing is ever built here, so a stray pig can go
                         # in it without knocking a leg out from under a
                         # structure — see the "pigs win" rule below
@@ -350,22 +357,302 @@ def s_deadfall(col):
             ('S', col + 1, GRID_H - 5), ('S', col + 2, GRID_H - 5)]
 
 
+def top_of(blocks, c0, c1):
+    """The row ABOVE the highest cell between columns c0 and c1, or the
+    ground if there is nothing there. This is how a structure gets built
+    on the roof of another one: the grid is sixteen rows and almost every
+    fort in this game has sat in the bottom five of them."""
+    rows = [r for _ch, c, r in blocks if c0 <= c <= c1]
+    return (min(rows) - 1) if rows else GRID_H - 1
+
+
+def s_nest(col, base):
+    """A crow's nest: two posts, a floor and a rail, standing on whatever
+    is underneath. Three wide so it fits on any roof, and the two cells
+    between the posts are left open because that is where the pig sits."""
+    return [('i', col, base), ('i', col + 2, base),
+            ('h', col, base - 1), ('h', col + 1, base - 1),
+            ('h', col + 2, base - 1),
+            ('x', col + 1, base - 2)]
+
+
+def s_watchtower(col, base, storeys):
+    """A tower built upward from `base`. Every floor ends ON its posts — a
+    floor that overhangs is a free fall, which is the rule that has caught
+    more of these than any other.
+
+    The storeys are NOT identical. Five copies of the same three rows read
+    as scaffolding rather than as a building, which is what the first cut
+    of this looked like: a brick ground floor, timber above it, an arch
+    where a pig can stand, windows only on the upper floors, and a pitched
+    roof to stop it. Four storeys is the cap for the same reason — past
+    that it is a ladder however it is dressed."""
+    storeys = max(1, min(4, storeys))
+    out = []
+    for f in range(storeys):
+        b = base - f * 3
+        wall = 'b' if f == 0 else 'v'            # brick foundation, timber up
+        out += [(wall, col, b), (wall, col + 3, b),
+                (wall, col, b - 1), (wall, col + 3, b - 1)]
+        out += [('h', col + dx, b - 2) for dx in range(4)]
+        if f == 0 and storeys > 1:
+            out += [('a', col + 1, b), ('a', col + 2, b)]   # a way in
+        elif f:
+            out += [('g', col + 1, b - 1)]                  # a window
+            if f == 2:
+                out += [('x', col + 2, b - 1)]              # ...and a crate
+    top = base - storeys * 3 + 1
+    if storeys > 1:                              # a roof, so it ends
+        out += [('/', col + 1, top - 1), ('\\', col + 2, top - 1)]
+    return out
+
+
+#  ---------------------------------------------------------------------
+#  Five more, so that the eight-shape rotation is not the whole of the
+#  variety. Each was designed against the support rules and then put
+#  through check_standing before it was let in — the argument for why a
+#  fort stands up is not the same thing as it standing up.
+#  ---------------------------------------------------------------------
+def s_granary(col):
+    r"""A grain store held clear of the ground on four upright planks —
+    floor, walls and roof standing on the legs and on nothing else.
+
+        . / \ .        the rafters
+        c h h c        the loft, boarded across
+        h h h h        the floor, ENDING on its posts
+        v . . v        the legs...
+        v . . v        ...and the doorway between them
+
+    This is the lesson the first fort has to teach: HIT THE LEG. Six of
+    the ten objects are up in the body, where a bird that lands on them
+    knocks a hole and stops. All six are carried by four uprights, and a
+    'v' topples. Take out a ground post and the post above it has nothing
+    underneath, which leaves the floor held at ONE end — and a beam held
+    at one end tips. The store comes off its legs in one piece.
+
+    Four wide, five tall, ten objects. The floor stops dead on the posts:
+    overhang them and it is a free fall before the player has taken a
+    shot, which is the mistake s_manor and s_citadel were each built with
+    once. The two middle cells of the bottom two rows are the doorway,
+    and that is where the pig stands."""
+    out = [('v', col, GRID_H - 1), ('v', col + 3, GRID_H - 1),
+           ('v', col, GRID_H - 2), ('v', col + 3, GRID_H - 2)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(4)]
+    #  The loft: two offcut shoulders with boarding between them, and the
+    #  boarding is what the rafters sit on. That short beam ends on the
+    #  floor below at both of its ends, so it is held at both.
+    out += [('c', col, GRID_H - 4), ('c', col + 3, GRID_H - 4)]
+    out += [('h', col + dx, GRID_H - 4) for dx in (1, 2)]
+    out += [('/', col + 1, GRID_H - 5), ('\\', col + 2, GRID_H - 5)]
+    return out
+
+
+def s_storehouse(col):
+    r"""A store: two thick walls, a roof over them, and CRATES for feet.
+
+        . / . \ .      the rafters
+        h h h h h      the roof plate
+        c . . . c      offcut walls, forty-five points apiece
+        c . . x c      ...and the goods stacked inside
+        x . . x x      THE CRATES, carrying the lot
+
+    The lesson is that a wall is only as strong as its worst cell. The
+    fort reads as solid — five cells of plate on two stacks of offcut —
+    but the whole of it stands on two crates, eighteen points each, at
+    bird height and in the open. A shot that would bounce off an offcut
+    goes clean through a crate; the wall above it then has nothing
+    underneath, and the plate is left held at one end.
+
+    The two crates on the floor hold nothing up. They are there because a
+    store has crates in it, and because a bird that rolls in through the
+    doorway should find something it can break — the same lesson, given
+    away for free.
+
+    Five wide, five tall, eleven objects."""
+    out = []
+    for dx in (0, 4):
+        out += [('x', col + dx, GRID_H - 1), ('c', col + dx, GRID_H - 2),
+                ('c', col + dx, GRID_H - 3)]
+    #  The plate ends ON the walls, and five cells of it merge to ONE
+    #  object — the roof is the cheapest part of the building.
+    out += [('h', col + dx, GRID_H - 4) for dx in range(5)]
+    out += [('/', col + 1, GRID_H - 5), ('\\', col + 3, GRID_H - 5)]
+    #  Loose goods: standing on the ground, holding nothing.
+    out += [('x', col + 3, GRID_H - 1), ('x', col + 3, GRID_H - 2)]
+    return out
+
+
+def s_porch(col):
+    r"""A gateway with a roof on it: two pillars, an offcut on each head
+    to spring from, an arch thrown across, and the roof sitting on that.
+
+        . / \ .        the rafters
+        h h h h        the roof plate
+        c a a c        THE ARCH, and the blocks it thrusts against
+        i . . i        the pillars...
+        i . . i        ...and the gateway, with the pig in it
+
+    The lesson is that the pig is not the target. It stands under the
+    arch with two cells of clear air over its head, and everything that
+    lands on the roof stops at the roof: knock the rafters off and the
+    pig is still down there in the same doorway, entirely unbothered.
+
+    What has to come down is the ARCH — and an arch is held by nothing
+    underneath it. The two arch cells are WEDGED, each between its
+    neighbour and the offcut on a pillar head, which is how an arch
+    stands in the first place. Take a pillar out and there is nothing
+    left to thrust against: the arch drops into the gateway with the
+    plate and both rafters still on top of it, which is the whole upper
+    half of the fort arriving in the cell the pig is standing in. A
+    pillar is twenty-eight points, the slenderest upright in the game,
+    and it topples.
+
+    Four wide, five tall, eleven objects."""
+    out = [('i', col, GRID_H - 1), ('i', col + 3, GRID_H - 1),
+           ('i', col, GRID_H - 2), ('i', col + 3, GRID_H - 2)]
+    #  c-a-a-c, the spelling s_gatehouse already uses — but with the two
+    #  cells UNDER the arch left empty, which is the whole point of it.
+    out += [('c', col, GRID_H - 3), ('c', col + 3, GRID_H - 3)]
+    out += [('a', col + 1, GRID_H - 3), ('a', col + 2, GRID_H - 3)]
+    out += [('h', col + dx, GRID_H - 4) for dx in range(4)]
+    out += [('/', col + 1, GRID_H - 5), ('\\', col + 2, GRID_H - 5)]
+    return out
+
+
+def s_belfry(col):
+    """NINE ROWS. More than half of this tower stands above the line every
+    other fort in the game stops at, and it is five cells wide, so it is a
+    spike rather than a block.
+
+    A bell tower. The ringing chamber at the bottom, a shaft over it, and
+    an open gallery at the top with a rope strung between two pillars and
+    a dressed stone hanging off the rope with NOTHING UNDER IT for two
+    rows. That is the deadfall idea stood on end and finally given
+    somewhere to fall to — s_deadfall drops its stones one row onto a pig;
+    this drops ninety hit points through three floors' worth of tower.
+
+    THREE ANSWERS, ONE PER STOREY, at wildly different prices:
+
+      the rope, 8 hp    cut it and the bell falls two rows onto a SHELF,
+                        which has twenty. The shelf snaps, the two posts
+                        standing on it lose their base, and the entire
+                        top half of the tower follows the bell down into
+                        the chamber the pigs are in.
+      the glass, 6 hp   that shelf ENDS ON the two panes. Break one and
+                        the shelf is held at one end only, so it tips over
+                        the other — and the tower tips with it.
+      the charge, 10 hp it is not buried. It IS the left wall cell of the
+                        ground storey, at the height of a flat shot, and
+                        the chamber floor's left end rests on it. Two
+                        cells of blast takes the stone foot beneath it and
+                        that floor above it, which is the storey the whole
+                        tower is standing on.
+
+    The rope is TIED AT BOTH ENDS: each end is butted against a pillar,
+    which is what ties it, and it correctly has nothing whatever
+    underneath it. check_standing skips ropes for exactly this reason.
+    Everything else is judged the ordinary way and every floor ends on its
+    posts.
+    """
+    out = []
+    #  The ringing chamber. The CHARGE does a wall's work here, which is
+    #  why it costs no extra object and why hitting it costs the storey.
+    out += [('S', col, GRID_H - 1), ('S', col + 4, GRID_H - 1)]
+    out += [('T', col, GRID_H - 2), ('b', col + 4, GRID_H - 2)]
+    out += [('h', col + dx, GRID_H - 3) for dx in range(5)]
+    #  THE WINDOWS, carrying the shelf above them.
+    out += [('g', col, GRID_H - 4), ('g', col + 4, GRID_H - 4)]
+    #  A SHELF, not a plank: twenty hit points is what the bell lands on.
+    out += [('s', col + dx, GRID_H - 5) for dx in range(5)]
+    #  The shaft the bell falls down — two rows of nothing, on purpose.
+    out += [('v', col, GRID_H - 6), ('v', col + 4, GRID_H - 6)]
+    out += [('v', col, GRID_H - 7), ('v', col + 4, GRID_H - 7)]
+    out += [('S', col + 2, GRID_H - 7)]
+    #  The gallery: two pillars with the rope strung between them, and the
+    #  bell hanging from the middle of it.
+    out += [('i', col, GRID_H - 8), ('i', col + 4, GRID_H - 8)]
+    out += [('-', col + dx, GRID_H - 8) for dx in range(1, 4)]
+    out += [('h', col + dx, GRID_H - 9) for dx in range(5)]
+    return out
+
+
+def s_barbican(col):
+    """A gate tower: SEVEN WIDE, EIGHT TALL, three storeys, and the whole
+    of the answer is one pane of glass on the middle one.
+
+    The gate passage is dressed stone — ninety hit points a cell, four of
+    them, with a pillar down the middle so it is two narrow bays and not
+    one seven-cell hall. Nobody is coming in at the ground. The magazine
+    on the top storey is easy to lob into, but taking it only takes the
+    top storey off, and the pigs are not up there.
+
+    THE MIDDLE STOREY IS THE LEVEL. Its guard room is walled in brick, and
+    THE BRICK IS SITTING ON GLASS: six hit points, on the outside face,
+    with clear air in front of it. A flat shot at GRID_H-4 breaks the
+    pane, the brick above drops, the upper floor is left held at ONE END
+    and tips over that end, and the top storey — pillars, magazine, deck
+    and all — goes over with it. The charge tumbles on the way down and
+    two cells of blast finishes whatever is still standing.
+
+    One bird, six hit points, through a window. The alternative is three
+    hundred and eight hit points of stone and pillar at the bottom, which
+    is exactly the choice this fort exists to offer.
+
+    Seven-cell floors are ONE OBJECT each — MAX_BEAM is eight — so the
+    widest structure in this tier is also nearly the cheapest, and both
+    floors end on their piers.
+    """
+    out = []
+    #  The gate passage: two stone piers and a pillar down the middle, so
+    #  a bird that rolls in finds two narrow bays rather than a hall.
+    for dy in (1, 2):
+        out += [('S', col, GRID_H - dy), ('i', col + 3, GRID_H - dy),
+                ('S', col + 6, GRID_H - dy)]
+    #  The passage ceiling, ending on the piers.
+    out += [('h', col + dx, GRID_H - 3) for dx in range(7)]
+    #  THE WINDOWS. Six hit points, on the outside face, and carrying the
+    #  brick that carries the upper floor. This is the shot.
+    out += [('g', col, GRID_H - 4), ('g', col + 6, GRID_H - 4)]
+    out += [('b', col, GRID_H - 5), ('b', col + 6, GRID_H - 5)]
+    out += [('h', col + dx, GRID_H - 6) for dx in range(7)]
+    #  The magazine: a charge standing on the upper floor, under the deck.
+    #  Two cells of blast either way takes the floor it stands on and the
+    #  deck over it — the whole top storey, from the inside.
+    out += [('i', col, GRID_H - 7), ('T', col + 3, GRID_H - 7),
+            ('i', col + 6, GRID_H - 7)]
+    #  A shelf, not a plank: the watch deck a pig stands on is the
+    #  flimsiest floor in the fort, and it is the highest.
+    out += [('s', col + dx, GRID_H - 8) for dx in range(7)]
+    return out
+
+
 def s_stack(col, n, ch='x'):
     return [(ch, col, GRID_H - 1 - i) for i in range(n)]
 
 
 #  The eight shapes, in the order the rotation meets them. Each takes a
 #  column and the grade; the ones that can grow, grow with it.
+#  TWELVE shapes now, not eight, so the rotation takes twelve forts to
+#  come round instead of eight — and each entry grows with the grade, so
+#  meeting a shape a second time is not meeting the same building.
 SHAPES = [
-    lambda col, g: s_hut(col),
-    lambda col, g: s_bridge(col, 3 + g // 4),
+    lambda col, g: s_hut(col) + (s_nest(col, GRID_H - 5) if g >= 3 else []),
+    lambda col, g: s_bridge(col, 3 + g // 3),
+    lambda col, g: s_granary(col) if g < 5 else s_belfry(col),
+    lambda col, g: s_watchtower(col, GRID_H - 1, 1 + (g + 2) // 3),
+    lambda col, g: s_gatehouse(col) + (s_nest(col + 1, GRID_H - 6)
+                                       if g >= 4 else []),
+    lambda col, g: s_storehouse(col) if g < 4 else s_barbican(col),
+    lambda col, g: s_manor(col) + (s_nest(col + 1, GRID_H - 7)
+                                   if 2 <= g <= 6 else []),
+    lambda col, g: s_citadel(col) if g >= 4 else s_keep(col),
+    lambda col, g: s_porch(col) + (s_nest(col, GRID_H - 6) if g >= 5 else []),
     lambda col, g: s_pyramid(col, 3 + g // 3),
-    lambda col, g: s_tower(col, 1 + g // 2),
-    lambda col, g: s_gatehouse(col),
-    lambda col, g: s_keep(col),
-    lambda col, g: s_manor(col),
-    lambda col, g: s_citadel(col) if g >= 6 else s_keep(col),
+    lambda col, g: s_belfry(col) if g >= 3 else s_porch(col),
+    lambda col, g: s_keep(col) + (s_watchtower(col, GRID_H - 7, g // 3)
+                                  if g >= 3 else []),
 ]
+SHAPE_COUNT = len(SHAPES)
 
 
 def clamp4(x, lo, hi):
@@ -374,49 +661,107 @@ def clamp4(x, lo, hi):
     return max(lo, min(hi, x)) // 4 * 4
 
 
+def place(blocks, ch, col, row):
+    """Add a piece, but NEVER INTO A BEAM.
+
+    A floor is a merged beam judged at its two ends. Drop a pane of glass
+    into the middle of one and it becomes two beams that each overhang
+    their posts, and a beam held at one end tips — so the "weak point"
+    brought the building down before the player had taken a shot. That is
+    exactly what happened to the outbuilding on levels 26, 34, 42 and 50.
+
+    If the target cell belongs to a beam the piece goes ON TOP of it
+    instead, where it is one cell resting on a floor and breaks nothing.
+    """
+    occ = {(x, y): c for c, x, y in blocks}
+    for _ in range(3):
+        if occ.get((col, row)) not in BEAM_CH:
+            blocks.append((ch, col, row))
+            return
+        row -= 1
+        if row < 0:
+            return
+
+
 def default_level(n):
-    """n is 1..40."""
-    grade = (n - 1) * 8 // LEVELS       # 0..7: how much gets built
-    shape = (n - 1) % 8                 # ...and which shapes, for variety
+    """n is 1..LEVELS."""
+    #  TWELVE grades, not eight, and the FIRST one is not empty. Level one
+    #  used to be a four-cell hut with a single pig in it, which reads as
+    #  an unfinished game rather than as a gentle one; it is a hut and a
+    #  shed and two pigs now, still one or two shots to solve.
+    grade = (n - 1) * 12 // LEVELS      # 0..11: how much gets built
+    shape = (n - 1) % SHAPE_COUNT       # ...and which shapes, for variety
 
     #  The sky, the ground and what stands about in it change every few
-    #  forts, so the run of fifty does not look like one long afternoon.
-    #  Seven is coprime with six, so the cycle does not line up with the
-    #  eight-shape rotation and no two neighbouring forts share a look.
+    #  forts, so the run does not look like one long afternoon. Seven is
+    #  coprime with six, so the cycle does not line up with the eight-shape
+    #  rotation and no two neighbouring forts share a look.
     theme = THEME_NAMES[(n // 7) % len(THEME_NAMES)]
 
     blocks, pigs = [], []
 
-    #  The main fort always. An outbuilding from grade 1, an annex from
-    #  grade 4 — so level three is a fort and a shed, and level thirty is
-    #  three separate problems that lean on each other.
-    blocks += SHAPES[shape](ZONE_MAIN, grade)
+    #  Two structures from the very first fort, three from grade three,
+    #  and from grade seven something built on the ROOF of the main one —
+    #  which is where the height is. Almost every fort in this game used to
+    #  sit in the bottom five of sixteen rows.
+    #  THE LAST FORTS ARE THE BIGGEST ONES, and not whatever the rotation
+    #  happened to land on. Left to the rotation the fiftieth came out
+    #  lighter than the forty-sixth, which is the wrong shape for the end
+    #  of a game: the three tallest structures take it in turn instead.
+    main = shape
+    if grade >= 10:
+        main = (7, 5, 10)[n % 3]        # citadel, barbican, belfry
+    blocks += SHAPES[main](ZONE_MAIN, grade)
     pigs += [('p', ZONE_MAIN + 1, GRID_H - 1)]
-    if grade >= 1:
-        blocks += SHAPES[(shape + 3) % 8](ZONE_OUT, max(0, grade - 2))
-        pigs += [('p', ZONE_OUT + 1, GRID_H - 1)]
-    if grade >= 4:
-        annex, pcol = ((s_derrick, 1), (s_deadfall, 1),
+
+    blocks += SHAPES[(shape + 5) % SHAPE_COUNT](ZONE_OUT, max(0, grade - 3))
+    pigs += [('p', ZONE_OUT + 1, GRID_H - 1)]
+
+    if 3 <= grade < 10:
+        annex, pcol = ((s_derrick, 3), (s_deadfall, 1),
                        (s_hut, 1))[shape % 3]
         blocks += annex(ZONE_ANNEX)
         pigs += [('p', ZONE_ANNEX + pcol, GRID_H - 1)]
 
+    if grade >= 7:
+        top = top_of(blocks, ZONE_MAIN, ZONE_MAIN + 3)
+        if top >= 2:
+            blocks += s_nest(ZONE_MAIN + 1, top)
+            pigs += [('P', ZONE_MAIN + 2, top - 1)]
+
+    #  ...and at the very end the annexe stops being a shed and becomes a
+    #  third fort in its own right. A nest on a nest on a nest is height
+    #  without variety — the outbuilding came out a fifteen-row ladder of
+    #  the same three cells — so this adds a different SHAPE instead.
+    if grade >= 10:
+        blocks += SHAPES[(shape + 8) % SHAPE_COUNT](ZONE_ANNEX, grade - 7)
+        pigs += [('p', ZONE_ANNEX + 2, GRID_H - 1)]
+
     #  A CHARGE, buried where it will take the fort with it. From grade 2:
     #  a player who has not yet worked out what a fort does should not be
-    #  handed the answer on level two.
+    #  handed the answer on level two. A second one later, and a third at
+    #  the very end.
     if grade >= 2:
-        blocks += [('T', ZONE_MAIN + 2, GRID_H - 1)]
-    if grade >= 5:
-        blocks += [('T', ZONE_OUT + 2, GRID_H - 2)]
+        place(blocks, 'T', ZONE_MAIN + 2, GRID_H - 1)
+    if grade >= 6:
+        place(blocks, 'T', ZONE_OUT + 2, GRID_H - 2)
+    if grade >= 11:
+        place(blocks, 'T', ZONE_ANNEX + 1, GRID_H - 3)
 
     #  Glass is a weak point on purpose — the cell worth aiming at. Stone
     #  is the opposite, and it goes at the foot of the main fort where it
     #  stops the cheap ground-floor shot working for ever.
-    if grade >= 3:
-        blocks += [('g', ZONE_MAIN + 4, GRID_H - 2)]
-    if grade >= 6:
-        blocks += [('S', ZONE_MAIN - 1, GRID_H - 1),
-                   ('S', ZONE_MAIN - 1, GRID_H - 2)]
+    if grade >= 2:
+        place(blocks, 'g', ZONE_MAIN + 4, GRID_H - 2)
+    if grade >= 5:
+        place(blocks, 'g', ZONE_OUT + 3, GRID_H - 4)
+    if grade >= 4:
+        place(blocks, 'S', ZONE_MAIN - 1, GRID_H - 1)
+        place(blocks, 'S', ZONE_MAIN - 1, GRID_H - 2)
+    if grade >= 8:
+        place(blocks, 'S', ZONE_MAIN + 5, GRID_H - 1)
+        place(blocks, 'S', ZONE_MAIN + 5, GRID_H - 2)
+        place(blocks, 'S', ZONE_OUT - 1, GRID_H - 1)
 
     #  The pigs the fort is FOR. Armour and a crown arrive with the grade,
     #  and the late ones stand on TOP of things rather than under them,
@@ -424,8 +769,10 @@ def default_level(n):
     if grade >= 2:
         pigs += [('P', ZONE_MAIN + 2, GRID_H - 4)]
     if grade >= 5:
-        pigs += [('K', ZONE_MAIN + 1, GRID_H - 7)]
+        pigs += [('p', ZONE_OUT + 2, GRID_H - 4)]
     if grade >= 6:
+        pigs += [('K', ZONE_MAIN + 1, GRID_H - 7)]
+    if grade >= 9:
         pigs += [('P', ZONE_GAP, GRID_H - 1)]
 
     #  A cell holds one thing, and it used to be the PIG that won it: the
