@@ -266,6 +266,9 @@ sb_cnt:         dw      0
 ;  In: (rr_col0) first world char column, (rr_ncol) columns,
 ;      (rr_y0) first line, (rr_n) lines.
 ; ============================================================================
+rr_g0:          db      0
+rr_g1:          db      0
+
 redraw_rect:
         ld      a,(rr_n)
         or      a
@@ -293,6 +296,46 @@ rr_span_ok:
         ld      a,(rr_ncol)
         or      a
         ret     z
+;  WHICH GRID COLUMNS COULD POSSIBLY BE IN HERE. Worked out once, and then
+;  every block and every pig is rejected against it with two compares.
+;
+;  It used to be one full block_bbox per piece per rebuild — block_tile,
+;  block_span, cell_pix, cell_cols and block_y, sixty-four times — and the
+;  rebuild that matters is the SCROLL SEAM, which is one column and has to
+;  fit in what is left of a frame after the beam has passed. It did not
+;  fit: the draw ran over the end of the frame, the flip landed a frame
+;  late, and the aliased cells it writes were on screen for that whole
+;  frame as a strip of the far side of the world down the left edge.
+;
+;  A char column covers pixels 4c..4c+3 and a grid column 10g..10g+9, so
+;  the range that can overlap the rectangle is (4*first-9)/10 .. (4*last+3)/10.
+        ld      a,(rr_col0)
+        add     a,a
+        add     a,a
+        ld      l,a
+        ld      h,0
+        ld      de,9
+        or      a
+        sbc     hl,de
+        jr      nc,rr_gmin
+        ld      hl,0
+rr_gmin:
+        call    pix_cell
+        ld      (rr_g0),a
+        ld      a,(rr_col0)
+        ld      b,a
+        ld      a,(rr_ncol)
+        add     a,b
+        dec     a
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        ld      de,3
+        add     hl,de
+        call    pix_cell
+        ld      (rr_g1),a
+
         call    shot_lift           ; a bird in flight keeps its own pixels;
                                     ; take it off before the ground moves
         ld      a,(rr_ncol)         ; (re-read: shot_lift does not preserve A)

@@ -256,6 +256,87 @@ def run_frame():
     state['frame'] += 1
 
 
+# ---------------------------------------------------------------------------
+#  BEAM-ACCURATE CAPTURE
+#
+#  screenshot() reads video RAM once, after the frame has been emulated. That
+#  is not what the player saw. Anything written after the beam had passed
+#  shows up in it although nobody saw it, and — worse — anything written
+#  before the beam arrived and corrected afterwards does NOT show up although
+#  everybody saw it. Chasing the scroll seam with it produced a clean bill of
+#  health for a machine that was visibly wrong.
+#
+#  run_frame_beam() emulates the frame in CHAR-ROW slices and copies each row
+#  out of video RAM at the moment the beam would have been over it, with the
+#  CRTC offset that was programmed then. The result is a picture of the
+#  frame as displayed.
+#
+#  The display is 25 char rows of 8 lines; the top border is about 5 rows of
+#  the 39-row PAL frame, so the beam is over char row n from roughly
+#  FRAME_TICKS * (5 + n) / 39 into the frame.
+# ---------------------------------------------------------------------------
+BEAM_ROWS = 25
+BEAM_TOP = 5                      # char rows of top border before row 0
+BEAM_TOTAL = 39                   # char rows in the whole PAL frame
+
+
+def run_frame_beam():
+    """One frame, captured as the beam draws it -> a list of 200 rows, each
+    a list of `cols*8` pen numbers."""
+    cols = crtc[1] or 40
+    out = []
+    done = 0
+    for row in range(-BEAM_TOP, BEAM_TOTAL - BEAM_TOP):
+        want = FRAME_TICKS * (row + BEAM_TOP + 1) // BEAM_TOTAL
+        while done < want:
+            step = min(want - done, FRAME_TICKS // SLICES)
+            #  keep the interrupt slices ticking at the right rate
+            slice_now = min(SLICES - 1, done * SLICES // FRAME_TICKS)
+            state['slice'] = slice_now
+            m.ticks_to_stop = step
+            m.run()
+            done += step
+            if (done * SLICES // FRAME_TICKS) != slice_now:
+                m.on_handle_active_int()
+        if 0 <= row < BEAM_ROWS:
+            off = ((crtc[12] & 3) << 8) | crtc[13]
+            for line in range(8):
+                y = row * 8 + line
+                base = 0xC000 + (y & 7) * 0x800
+                roff = off + row * cols
+                pens_row = []
+                for c in range(cols):
+                    a = base + ((roff + c) & 0x3FF) * 2
+                    for byte in (m.memory[a], m.memory[a + 1]):
+                        p0, p1 = decode_pixels(byte)
+                        pens_row.append(p0)
+                        pens_row.append(p1)
+                out.append(pens_row)
+    state['frame'] += 1
+    return out
+
+
+def beam_png(rows, name, scale=4):
+    rgb = [hw_rgb(p) for p in pens]
+    W = len(rows[0]) * scale
+    raw = []
+    for r in rows:
+        line = b''.join(bytes(rgb[p]) * scale for p in r)
+        raw.append(b'\x00' + line)
+        raw.append(b'\x00' + line)
+
+    def chunk(t, d):
+        c = t + d
+        return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c))
+    png = (b'\x89PNG\r\n\x1a\n'
+           + chunk(b'IHDR', struct.pack('>IIBBBBB', W, len(rows) * 2,
+                                        8, 2, 0, 0, 0))
+           + chunk(b'IDAT', zlib.compress(b''.join(raw), 6))
+           + chunk(b'IEND', b''))
+    os.makedirs(OUT, exist_ok=True)
+    open('%s/%s.png' % (OUT, name), 'wb').write(png)
+
+
 # ---------------- screen decode + PNG ---------------------------------------
 def decode_pixels(byte):
     def pix(right):

@@ -227,6 +227,13 @@ pdr_test:
         ret     z
         cp      ES_DEAD
         ret     z
+        ld      a,(ix+ENT_COL)      ; the same two compares the blocks get
+        ld      hl,rr_g0
+        cp      (hl)
+        ret     c                   ; left of the rectangle
+        ld      a,(rr_g1)
+        cp      (ix+ENT_COL)
+        ret     c                   ; ...or right of it
         ld      c,CR_WIDTH
         ld      a,(ix+ENT_COL)
         call    cell_cols

@@ -581,6 +581,18 @@ bdr_test:
         ld      a,(ix+BLK_STATE)
         or      a
         ret     z
+;  Two compares before the expensive part. block_bbox is five routines and
+;  it was being run for every piece in the fort on every rebuild, including
+;  the one-column scroll seam that has to beat the raster.
+        ld      a,(ix+BLK_COL)
+        add     a,(ix+BLK_LEN)
+        dec     a                   ; its rightmost grid column
+        ld      hl,rr_g0
+        cp      (hl)
+        ret     c                   ; entirely left of the rectangle
+        ld      a,(rr_g1)
+        cp      (ix+BLK_COL)
+        ret     c                   ; ...or entirely right of it
         call    block_bbox          ; -> (bb_col) (bb_ncol) (bb_y) (bb_n)
         ld      a,(rr_col0)
         ld      b,a

@@ -111,10 +111,22 @@ main_loop:
         inc     (hl)
         call    kbd_scan
         call    hotkeys
+;  THE SEAM GOES EARLY, not last. It has to start just after the beam has
+;  cleared the top of the display and be finished before the next VSYNC,
+;  and it is the longest single thing in the frame — so it wants the whole
+;  of the frame after that point, not whatever is left once the physics has
+;  had its turn. Called last it arrived at slice two or four, spun most of
+;  a frame waiting for slice one to come round again, and then ran off the
+;  end: the flip landed a frame late and the cells it had written were the
+;  left edge of the screen for that whole frame.
+;
+;  It stages from the previous frame's world, which at the edge of the
+;  window is one frame of staleness on a column the player is not looking
+;  at yet.
+        call    scroll_prep
         call    game_update
         call    snd_update          ; one step of every voice
         call    ui_refresh          ; ...if anything it shows has changed
-        call    scroll_prep         ; stage the next column, in the border
         jr      main_loop
 
 ; ----------------------------------------------------------------------------
@@ -194,7 +206,18 @@ apply_scroll:
         ld      (flip_dir),a
         ld      a,(spr_cam)
         ld      (cam_x),a
-        jp      crtc_set_offset
+        call    crtc_set_offset
+;  THE STRIP GOES DOWN AFTER THE FLIP, not before it. Row 0's ring cells
+;  are the forty consecutive chars starting at cam_x, so a strip written
+;  for the new camera while the OLD offset is still programmed appears one
+;  character to the right — the last of its cells is not on row 0 at all,
+;  it is row 1 column 0 — and for that frame the player sees the strip
+;  shifted with a black gap at the left and a stray character in it.
+;
+;  It is safe here because it is a straight run of stores into row 0 and we
+;  are in the border: eighty bytes a scanline against a beam that has not
+;  started, and row 0 is only eight scanlines long.
+        jp      ui_blit
 
 ; ---- scroll_prep — end of frame: stage the incoming column -----------------
 ;  Drawn with cam_x already moved to where it WILL be. The world-to-ring
@@ -235,17 +258,24 @@ sp_right:
         add     a,VIEW_CHARS-1      ; right: the new trailing edge
         ld      (spr_col),a
 sp_draw:
-;  WAIT FOR THE BEAM. The seam column lands in ring cells that, until the
-;  flip, alias the LEFTMOST visible column one row down — so drawing it
-;  while the beam is still crossing the display rewrites what the player is
-;  looking at, and the left edge of the turf crawls and tears. Started in
-;  slice 2 the draw is always behind the beam for this frame (it writes row
-;  r at ~104+11r, the beam showed that cell at 40+8r) and always ahead of
-;  it for the next (344+8r), for every row.
+;  WAIT FOR THE BEAM, BUT NOT LONG. The seam column lands in ring cells
+;  that, until the flip, alias the LEFTMOST visible column one row down, so
+;  the draw has to be BEHIND the beam this frame and FINISHED before the
+;  next VSYNC. Two constraints pulling opposite ways.
+;
+;  Measured, the draw is three to five interrupt ticks of the six in a
+;  frame. Started at tick 2 it ended at tick 5 to 7 — over the edge as
+;  often as not, and every overrun costs a whole display frame during which
+;  those aliased cells ARE the left edge of the screen. That is the strip
+;  of the far side of the world the player was seeing.
+;
+;  Tick 1 is scanline ~52, and the draw reaches row r at 52 + 8.3r against
+;  a beam that showed it at 40 + 8r: behind it for every row, and finished
+;  by scanline 260.
         ld      bc,0
 sp_wait:
         ld      a,(int_slice)
-        cp      2
+        cp      1
         jr      z,sp_go
         dec     bc                  ; never hang if the ISR is not ticking
         ld      a,b
@@ -258,13 +288,9 @@ sp_go:
         ld      (rr_col0),a
         ld      a,1
         ld      (rr_ncol),a
-;  The HUD goes down FIRST, the way Creepers does it: row 0 is the first
-;  thing the next frame's beam shows, and it is a straight LDIR, so it
-;  wants to be finished before the long part starts rather than queued
-;  behind it. Then the column itself, rows 8..199 only — repainting row 0
-;  underneath a strip that has just been laid on top of it is work with
-;  nothing to show for it, and this draw is racing the raster.
-        call    ui_blit
+;  Rows 8..199 only. Row 0 is the status strip and it is not drawn from
+;  the world; it goes down in apply_scroll, after the flip — see there for
+;  why it cannot go down here.
 
 ;  TAKE THE AIM DOTS OFF, do not merely forget them. The rebuild below
 ;  touches ONE column and the dotted line spans several: forgetting them
@@ -285,7 +311,19 @@ sp_go:
         ld      (cam_x),a
         ld      a,1
         ld      (flip_dir),a
-        ret
+;  AND FLIP IT HERE, not on the next pass round the loop.
+;
+;  The cells just written alias the leftmost visible column until the flip,
+;  and the draw ends about where VSYNC is — so the flip is one wait away.
+;  Left to main_loop it happened a pass later, and a pass is longer than a
+;  frame while the seam is being drawn: the aliased cells were the left
+;  edge of the screen for a whole display frame, which is the strip of the
+;  far side of the world the player was seeing. Profiling says a third of
+;  the loop is already spent waiting for VSYNC, so the wait costs nothing
+;  that was not being spent anyway.
+        call    wait_vsync
+        jp      apply_scroll
+
 
 ; ============================================================================
 ;  frame_interrupt — the Gate Array fires six of these a frame. Nothing
@@ -379,6 +417,8 @@ sym_pigs:
 sym_cam_x:
  org game_state
 sym_game_state:
+ org frame_counter
+sym_frame_counter:
 
 ; ---- block art, at its permanent address and needing no move ---------------
         org     BLOCK_ART
