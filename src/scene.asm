@@ -309,11 +309,18 @@ rr_span_ok:
 ;
 ;  A char column covers pixels 4c..4c+3 and a grid column 10g..10g+9, so
 ;  the range that can overlap the rectangle is (4*first-9)/10 .. (4*last+3)/10.
+;  WIDEN BEFORE MULTIPLYING. Four times a char column is up to 316, and
+;  doing it in A wrapped every column from 64 up — 4*79 came out 60, so
+;  rr_g0 was 5 where it should have been 30 and the cull quietly stopped
+;  culling over the whole right-hand fifth of the world. Nothing was ever
+;  dropped from the screen, because the error only ever goes downward and
+;  leaves the range too wide; it just threw the saving away exactly where
+;  the seam needs it. The rr_g1 half below always did it in HL.
         ld      a,(rr_col0)
-        add     a,a
-        add     a,a
         ld      l,a
         ld      h,0
+        add     hl,hl
+        add     hl,hl
         ld      de,9
         or      a
         sbc     hl,de

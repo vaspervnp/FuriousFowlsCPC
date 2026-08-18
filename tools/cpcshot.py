@@ -275,22 +275,39 @@ def run_frame():
 #  the 39-row PAL frame, so the beam is over char row n from roughly
 #  FRAME_TICKS * (5 + n) / 39 into the frame.
 # ---------------------------------------------------------------------------
+#  THE PHASE, and getting it wrong hides exactly the bug you are hunting.
+#
+#  From crtc_table: R4=38 and R9=7, so the frame is 39 char rows of 8 =
+#  312 lines. R6=25, so the display is rows 0..24 = lines 0..199. R7=30,
+#  so VSYNC starts at line 240. The Gate Array's resync interrupt — the one
+#  frame_interrupt sees with the VSYNC bit set, which zeroes int_slice —
+#  fires about two lines into that pulse, at line 242. THE EMULATOR'S FRAME
+#  STARTS THERE, not at CRTC line 0, so display line 0 is 312-242 = 70
+#  lines later.
+#
+#  The first cut of this assumed five char rows of top border. That put
+#  every sample thirty lines early, which is to say BEFORE the seam draw
+#  had written the cells — and the capture came back clean for a machine
+#  that was visibly wrong. Same class of mistake as the end-of-frame
+#  screenshot it was written to replace.
 BEAM_ROWS = 25
-BEAM_TOP = 5                      # char rows of top border before row 0
-BEAM_TOTAL = 39                   # char rows in the whole PAL frame
+BEAM_LINES = 312                  # R4=38, R9=7
+BEAM_DISPLAY = 70                 # emulator line of display line 0
 
 
 def run_frame_beam():
-    """One frame, captured as the beam draws it -> a list of 200 rows, each
-    a list of `cols*8` pen numbers."""
+    """One frame as the BEAM shows it -> 200 rows of cols*8 pen numbers.
+
+    Each char row is copied out of video RAM at the moment the beam has
+    just finished it, with the CRTC offset that was programmed then."""
     cols = crtc[1] or 40
-    out = []
+    out = [None] * BEAM_ROWS
     done = 0
-    for row in range(-BEAM_TOP, BEAM_TOTAL - BEAM_TOP):
-        want = FRAME_TICKS * (row + BEAM_TOP + 1) // BEAM_TOTAL
+    line_ticks = FRAME_TICKS // BEAM_LINES
+    for row in range(BEAM_ROWS):
+        want = (BEAM_DISPLAY + row * 8 + 8) * line_ticks
         while done < want:
             step = min(want - done, FRAME_TICKS // SLICES)
-            #  keep the interrupt slices ticking at the right rate
             slice_now = min(SLICES - 1, done * SLICES // FRAME_TICKS)
             state['slice'] = slice_now
             m.ticks_to_stop = step
@@ -298,22 +315,32 @@ def run_frame_beam():
             done += step
             if (done * SLICES // FRAME_TICKS) != slice_now:
                 m.on_handle_active_int()
-        if 0 <= row < BEAM_ROWS:
-            off = ((crtc[12] & 3) << 8) | crtc[13]
-            for line in range(8):
-                y = row * 8 + line
-                base = 0xC000 + (y & 7) * 0x800
-                roff = off + row * cols
-                pens_row = []
-                for c in range(cols):
-                    a = base + ((roff + c) & 0x3FF) * 2
-                    for byte in (m.memory[a], m.memory[a + 1]):
-                        p0, p1 = decode_pixels(byte)
-                        pens_row.append(p0)
-                        pens_row.append(p1)
-                out.append(pens_row)
+        off = ((crtc[12] & 3) << 8) | crtc[13]
+        rows8 = []
+        for line in range(8):
+            y = row * 8 + line
+            base = 0xC000 + (y & 7) * 0x800
+            roff = off + row * cols
+            pens_row = []
+            for c in range(cols):
+                a = base + ((roff + c) & 0x3FF) * 2
+                for byte in (m.memory[a], m.memory[a + 1]):
+                    p0, p1 = decode_pixels(byte)
+                    pens_row.append(p0)
+                    pens_row.append(p1)
+            rows8.append(pens_row)
+        out[row] = rows8
+    while done < FRAME_TICKS:                 # finish the frame
+        step = min(FRAME_TICKS - done, FRAME_TICKS // SLICES)
+        slice_now = min(SLICES - 1, done * SLICES // FRAME_TICKS)
+        state['slice'] = slice_now
+        m.ticks_to_stop = step
+        m.run()
+        done += step
+        if (done * SLICES // FRAME_TICKS) != slice_now:
+            m.on_handle_active_int()
     state['frame'] += 1
-    return out
+    return [line for rows8 in out for line in rows8]
 
 
 def beam_png(rows, name, scale=4):

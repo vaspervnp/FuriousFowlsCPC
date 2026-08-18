@@ -258,25 +258,29 @@ sp_right:
         add     a,VIEW_CHARS-1      ; right: the new trailing edge
         ld      (spr_col),a
 sp_draw:
-;  WAIT FOR THE BEAM, BUT NOT LONG. The seam column lands in ring cells
-;  that, until the flip, alias the LEFTMOST visible column one row down, so
-;  the draw has to be BEHIND the beam this frame and FINISHED before the
-;  next VSYNC. Two constraints pulling opposite ways.
+;  WAIT FOR THE BEAM. The seam column lands in ring cells that, until the
+;  flip, alias the LEFTMOST visible column one row down, so the draw has to
+;  be BEHIND the beam.
 ;
-;  Measured, the draw is three to five interrupt ticks of the six in a
-;  frame. Started at tick 2 it ended at tick 5 to 7 — over the edge as
-;  often as not, and every overrun costs a whole display frame during which
-;  those aliased cells ARE the left edge of the screen. That is the strip
-;  of the far side of the world the player was seeing.
+;  SLICE 2, AND NOT SLICE 1. Work the geometry from crtc_table: R4=38 and
+;  R9=7 make the frame 39 char rows of 8 = 312 lines; R6=25 puts the
+;  display on lines 0..199; R7=30 starts VSYNC at line 240. The Gate Array
+;  resync interrupt — the one frame_interrupt sees with the VSYNC bit set,
+;  which zeroes int_slice — fires about two lines into that pulse, at 242,
+;  and the other five follow every 52 lines. So slice 1 is line 294, which
+;  is EIGHTEEN LINES BEFORE the display top, and slice 2 is line 34, which
+;  is thirty-four lines INTO it. Starting at slice 1 puts the draw AHEAD of
+;  the beam and paints the incoming column down the left edge — which is
+;  what it did, and it was mine.
 ;
-;  Tick 1 is scanline ~52, and the draw reaches row r at 52 + 8.3r against
-;  a beam that showed it at 40 + 8r: behind it for every row, and finished
-;  by scanline 260.
+;  ...OR ANY LATER SLICE, which is how CreepersCPC writes it. Insisting on
+;  one slice exactly costs a whole frame whenever the rest of the loop has
+;  already run past it, and that wait was the other half of the problem.
         ld      bc,0
 sp_wait:
         ld      a,(int_slice)
-        cp      1
-        jr      z,sp_go
+        cp      2
+        jr      nc,sp_go
         dec     bc                  ; never hang if the ISR is not ticking
         ld      a,b
         or      c
