@@ -29,12 +29,25 @@ hud_buf         equ bg_template+COLBUF_SIZE ; the status strip, composed
 HUD_STRIDE      equ VIEW_CHARS*2            ; straight in MODE 0 so it can be
 HUD_SIZE        equ HUD_STRIDE*HUD_LINES    ; LDIR'd into the ring as-is
 
+;  THE SCROLL SEAM, composed in RAM. The incoming column cannot be drawn
+;  into the ring before the flip — its cells alias the leftmost visible
+;  column one row down — and it cannot be drawn after the flip either,
+;  because a full column takes up to 260 of the 312 lines in a frame and
+;  the beam is only 200 of them. Every scheduling of that draw was a race
+;  and every one of them lost.
+;
+;  So it is BUILT here, where nothing can see it, and blasted into the ring
+;  immediately after the flip: two hundred lines of two bytes is about
+;  three scanlines of stores, which no beam can outrun.
+seam_buf        equ hud_buf+HUD_SIZE
+SEAM_BUF_SIZE   equ SCREEN_LINES*2
+
 ;  What is under the bird. Rebuilding the scene beneath it is four columns
 ;  of background every time it moves, which does not fit in a frame
 ;  alongside the blit — so the pixels it covers are kept and put back
 ;  instead. See shot.asm. spr_clip never hands back more than one sprite
 ;  row, so the store is that wide and no wider.
-shot_back       equ hud_buf+HUD_SIZE
+shot_back       equ seam_buf+SEAM_BUF_SIZE
 SHOT_BACK_SIZE  equ (CR_BYTES_PER_ROW+1)*CR_HEIGHT
 
 ; --- the level, unpacked ----------------------------------------------------

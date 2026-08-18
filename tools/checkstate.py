@@ -63,6 +63,11 @@ def main():
             seed.update(resolve(path, seed))
 
     vals = resolve(STATE, seed)
+    #  Only names DEFINED in state.inc. The seeds carry I/O port addresses
+    #  from hardware.inc — CRTC_DAT is #BD00 — and once the state block
+    #  grew past them the checker started reporting a port and a variable
+    #  as a collision. They are different address spaces.
+    mine = set(n.lower() for n, _ in EQU.findall(open(STATE).read()))
 
     #  Only the addresses in the state block, not the SIZE constants.
     base, end = vals.get('state_base'), vals.get('state_end')
@@ -70,6 +75,8 @@ def main():
         raise SystemExit('checkstate: cannot resolve STATE_BASE')
     at = {}
     for name, v in vals.items():
+        if name not in mine:
+            continue
         if not isinstance(v, int) or not base <= v < (end or 0xC000):
             continue
         if name.endswith('_size') or name.endswith('_stride'):

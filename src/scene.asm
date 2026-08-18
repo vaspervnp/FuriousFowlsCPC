@@ -269,6 +269,43 @@ sb_cnt:         dw      0
 rr_g0:          db      0
 rr_g1:          db      0
 
+; ---- rr_bounds — the range of GRID columns the rectangle can touch -------
+;  Worked out once, and then every block and every pig is rejected against
+;  it with two compares instead of a full block_bbox.
+;
+;  A char column covers pixels 4c..4c+3 and a grid column 10g..10g+9, so
+;  the range that can overlap is (4*first-9)/10 .. (4*last+3)/10. Widen
+;  into HL BEFORE multiplying: four times a char column reaches 316, and
+;  doing it in A wrapped every column from 64 up.
+rr_bounds:
+        ld      a,(rr_col0)
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        ld      de,9
+        or      a
+        sbc     hl,de
+        jr      nc,rr_gmin
+        ld      hl,0
+rr_gmin:
+        call    pix_cell
+        ld      (rr_g0),a
+        ld      a,(rr_col0)
+        ld      b,a
+        ld      a,(rr_ncol)
+        add     a,b
+        dec     a
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        ld      de,3
+        add     hl,de
+        call    pix_cell
+        ld      (rr_g1),a
+        ret
+
 redraw_rect:
         ld      a,(rr_n)
         or      a
@@ -296,53 +333,7 @@ rr_span_ok:
         ld      a,(rr_ncol)
         or      a
         ret     z
-;  WHICH GRID COLUMNS COULD POSSIBLY BE IN HERE. Worked out once, and then
-;  every block and every pig is rejected against it with two compares.
-;
-;  It used to be one full block_bbox per piece per rebuild — block_tile,
-;  block_span, cell_pix, cell_cols and block_y, sixty-four times — and the
-;  rebuild that matters is the SCROLL SEAM, which is one column and has to
-;  fit in what is left of a frame after the beam has passed. It did not
-;  fit: the draw ran over the end of the frame, the flip landed a frame
-;  late, and the aliased cells it writes were on screen for that whole
-;  frame as a strip of the far side of the world down the left edge.
-;
-;  A char column covers pixels 4c..4c+3 and a grid column 10g..10g+9, so
-;  the range that can overlap the rectangle is (4*first-9)/10 .. (4*last+3)/10.
-;  WIDEN BEFORE MULTIPLYING. Four times a char column is up to 316, and
-;  doing it in A wrapped every column from 64 up — 4*79 came out 60, so
-;  rr_g0 was 5 where it should have been 30 and the cull quietly stopped
-;  culling over the whole right-hand fifth of the world. Nothing was ever
-;  dropped from the screen, because the error only ever goes downward and
-;  leaves the range too wide; it just threw the saving away exactly where
-;  the seam needs it. The rr_g1 half below always did it in HL.
-        ld      a,(rr_col0)
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        ld      de,9
-        or      a
-        sbc     hl,de
-        jr      nc,rr_gmin
-        ld      hl,0
-rr_gmin:
-        call    pix_cell
-        ld      (rr_g0),a
-        ld      a,(rr_col0)
-        ld      b,a
-        ld      a,(rr_ncol)
-        add     a,b
-        dec     a
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        ld      de,3
-        add     hl,de
-        call    pix_cell
-        ld      (rr_g1),a
-
+        call    rr_bounds
         call    shot_lift           ; a bird in flight keeps its own pixels;
                                     ; take it off before the ground moves
         ld      a,(rr_ncol)         ; (re-read: shot_lift does not preserve A)
@@ -389,6 +380,14 @@ rr_column:
 ;  Drawing slightly outside the rectangle is harmless — it paints the same
 ;  pixels that were already there.
 ; ----------------------------------------------------------------------------
+; ---- rr_sprites — the fort and the pigs in a rectangle, without rebuilding
+;      the scene under them. The scroll seam has already laid its scene
+;      down out of seam_buf; all that is left is what stands in it.
+rr_sprites:
+        call    rr_bounds
+        call    shot_lift
+        jr      rr_restack
+
 rr_restack:
         call    blocks_draw_rect
         call    pigs_draw_rect

@@ -207,6 +207,23 @@ apply_scroll:
         ld      a,(spr_cam)
         ld      (cam_x),a
         call    crtc_set_offset
+;  THE COLUMN, straight out of seam_buf and into the cells it now really
+;  belongs in: about three scanlines of stores, so the beam cannot get
+;  ahead of it however slowly the frame started.
+        ld      a,(flip_col)
+        call    seam_blast
+;  ...and then whatever fort and pigs stand in it. A handful of sprites,
+;  drawn into the RIGHT cells now that the flip has happened, so being
+;  ahead of the beam is simply early rather than wrong.
+        ld      a,(flip_col)
+        ld      (rr_col0),a
+        ld      a,1
+        ld      (rr_ncol),a
+        ld      a,PLAY_TOP
+        ld      (rr_y0),a
+        ld      a,SCREEN_LINES-PLAY_TOP
+        ld      (rr_n),a
+        call    rr_sprites
 ;  THE STRIP GOES DOWN AFTER THE FLIP, not before it. Row 0's ring cells
 ;  are the forty consecutive chars starting at cam_x, so a strip written
 ;  for the new camera while the OLD offset is still programmed appears one
@@ -258,76 +275,40 @@ sp_right:
         add     a,VIEW_CHARS-1      ; right: the new trailing edge
         ld      (spr_col),a
 sp_draw:
-;  WAIT FOR THE BEAM. The seam column lands in ring cells that, until the
-;  flip, alias the LEFTMOST visible column one row down, so the draw has to
-;  be BEHIND the beam.
+;  COMPOSE, DO NOT DRAW. The column is built into seam_buf, which nothing
+;  displays, so this has no raster constraint at all — it may take as long
+;  as the fort in that column demands. apply_scroll flips and blasts it
+;  into the ring on the next VSYNC.
 ;
-;  SLICE 2, AND NOT SLICE 1. Work the geometry from crtc_table: R4=38 and
-;  R9=7 make the frame 39 char rows of 8 = 312 lines; R6=25 puts the
-;  display on lines 0..199; R7=30 starts VSYNC at line 240. The Gate Array
-;  resync interrupt — the one frame_interrupt sees with the VSYNC bit set,
-;  which zeroes int_slice — fires about two lines into that pulse, at 242,
-;  and the other five follow every 52 lines. So slice 1 is line 294, which
-;  is EIGHTEEN LINES BEFORE the display top, and slice 2 is line 34, which
-;  is thirty-four lines INTO it. Starting at slice 1 puts the draw AHEAD of
-;  the beam and paints the incoming column down the left edge — which is
-;  what it did, and it was mine.
-;
-;  ...OR ANY LATER SLICE, which is how CreepersCPC writes it. Insisting on
-;  one slice exactly costs a whole frame whenever the rest of the loop has
-;  already run past it, and that wait was the other half of the problem.
-        ld      bc,0
-sp_wait:
-        ld      a,(int_slice)
-        cp      2
-        jr      nc,sp_go
-        dec     bc                  ; never hang if the ISR is not ticking
-        ld      a,b
-        or      c
-        jr      nz,sp_wait
-sp_go:
+;  Every earlier version raced the beam and every one of them lost. The
+;  seam column's cells alias the leftmost visible column one row down
+;  until the flip, so the draw has to finish behind the beam; but a column
+;  costs up to 260 of the 312 lines in a frame and the display is 200 of
+;  them. There is no start time, and no pacing, that keeps a draw of that
+;  size behind a beam it is slower than for part of the frame and faster
+;  than for the rest. Composing it where nobody can see it is the only
+;  thing that is not a race.
         ld      a,(spr_cam)
-        ld      (cam_x),a
-        ld      a,(spr_col)
-        ld      (rr_col0),a
-        ld      a,1
-        ld      (rr_ncol),a
-;  Rows 8..199 only. Row 0 is the status strip and it is not drawn from
-;  the world; it goes down in apply_scroll, after the flip — see there for
-;  why it cannot go down here.
-
-;  TAKE THE AIM DOTS OFF, do not merely forget them. The rebuild below
-;  touches ONE column and the dotted line spans several: forgetting them
-;  leaves every dot outside that column on the screen with nothing left
-;  that knows how to erase it, which is one ghost of the line per pan.
-;  Restoring puts them all back to background; an impossible angle then
-;  makes the next frame lay the line down again where it now belongs.
+        ld      (cam_x),a           ; so scene_build clips for the frame it
+                                    ; is building, not the one on screen
+;  TAKE THE AIM DOTS OFF, do not merely forget them. The blast rewrites
+;  one column and the dotted line spans several: forgetting them leaves
+;  every dot outside that column on the screen with nothing left that
+;  knows how to erase it, which is one ghost of the line per pan.
         call    aim_undot
         ld      a,#FF
         ld      (ad_angle),a
-
-        ld      a,PLAY_TOP
-        ld      (rr_y0),a
-        ld      a,SCREEN_LINES-PLAY_TOP
-        ld      (rr_n),a
-        call    redraw_rect
+        ld      a,(spr_col)
+        call    seam_build
+        ld      a,(spr_col)
+        ld      (flip_col),a        ; what apply_scroll will blast
         ld      a,(sp_oldcam)       ; the flip has not happened yet
         ld      (cam_x),a
         ld      a,1
         ld      (flip_dir),a
-;  AND FLIP IT HERE, not on the next pass round the loop.
-;
-;  The cells just written alias the leftmost visible column until the flip,
-;  and the draw ends about where VSYNC is — so the flip is one wait away.
-;  Left to main_loop it happened a pass later, and a pass is longer than a
-;  frame while the seam is being drawn: the aliased cells were the left
-;  edge of the screen for a whole display frame, which is the strip of the
-;  far side of the world the player was seeing. Profiling says a third of
-;  the loop is already spent waiting for VSYNC, so the wait costs nothing
-;  that was not being spent anyway.
-        call    wait_vsync
-        jp      apply_scroll
+        ret
 
+flip_col:       db      0
 
 ; ============================================================================
 ;  frame_interrupt — the Gate Array fires six of these a frame. Nothing

@@ -384,6 +384,89 @@ draw_world_column:
         jp      draw_col_range
 
 ; ----------------------------------------------------------------------------
+;  seam_build — A = world char column. Compose it into seam_buf instead of
+;  video RAM: art out of scene_build, converted to Mode 0, laid down two
+;  bytes a line for all two hundred lines.
+;
+;  No video RAM is touched, so this can take as long as it likes and the
+;  player cannot see any of it. That is the whole point — see state.inc.
+; ----------------------------------------------------------------------------
+seam_build:
+        ld      (dcr_col),a
+        xor     a
+        ld      (sb_y0),a
+        ld      a,SCREEN_LINES
+        ld      (sb_n),a
+        ld      a,(dcr_col)
+        call    scene_build         ; sky, turf and scenery -> colbuf
+        ld      hl,colbuf
+        ld      de,seam_buf
+        ld      bc,SCREEN_LINES
+sb_conv:
+        push    bc
+        ld      a,(hl)              ; art -> Mode 0, both bytes of the char
+        inc     hl
+        ld      c,a
+        ld      b,NP2DATA/256
+        ld      a,(bc)
+        ld      (de),a
+        inc     de
+        ld      a,(hl)
+        inc     hl
+        ld      c,a
+        ld      a,(bc)
+        ld      (de),a
+        inc     de
+        pop     bc
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,sb_conv
+        ret
+
+; ----------------------------------------------------------------------------
+;  seam_blast — A = world char column. Push seam_buf into the ring.
+;
+;  Called with the flip already done, so these are the cells the column
+;  really belongs in and writing them ahead of the beam is not a race, it
+;  is just early. Two bytes a line, the same +#800 walk and eight-line
+;  recalculation draw_col_range uses.
+; ----------------------------------------------------------------------------
+seam_blast:
+        ld      (dcr_col),a
+        ld      iy,seam_buf
+        xor     a
+        ld      (sbl_y),a
+sbl_row:
+        ld      a,(sbl_y)
+        ld      e,a
+        ld      a,(dcr_col)
+        ld      d,a
+        call    world_to_screen     ; HL = the char's left byte
+        ld      b,8                 ; one character row at a time
+sbl_line:
+        ld      a,(iy+0)
+        ld      (hl),a
+        inc     l                   ; a char base is even, so no carry
+        ld      a,(iy+1)
+        ld      (hl),a
+        dec     l
+        inc     iy
+        inc     iy
+        ld      a,h                 ; next scanline within the char row
+        add     a,8
+        ld      h,a
+        djnz    sbl_line
+        ld      a,(sbl_y)
+        add     a,8
+        ld      (sbl_y),a
+        cp      SCREEN_LINES
+        jr      c,sbl_row
+        ret
+
+sbl_y:          db      0
+
+; ----------------------------------------------------------------------------
 ;  repaint_window — redraw all 40 visible columns
 ; ----------------------------------------------------------------------------
 repaint_window:

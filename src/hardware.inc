@@ -271,6 +271,13 @@ DIFF_EASY               equ 0
 DIFF_MEDIUM             equ 1
 DIFF_HARD               equ 2
 DIFF_COUNT              equ 3
+;  The scroll seam is drawn in chunks, paced one chunk per raster
+;  interrupt, so that it stays behind the beam whatever is in the column.
+;  Four chunks of seven character rows covers lines 8..199; seven rows per
+;  52-line tick is 7.4 lines a row against a beam doing 8.
+SEAM_CHUNKS             equ 4
+SEAM_CHUNK_LINES        equ 56
+
 SETTLE_FRAMES           equ 60      ; quiet frames before the turn ends
 SETTLE_MAX              equ 250     ; ...and the longest a settle may run
 BANNER_FRAMES           equ 100
