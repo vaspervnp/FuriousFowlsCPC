@@ -29,6 +29,7 @@ make asm           # assemble only
 make sprites-export  # write assets/sheets/*.png so you can edit the art
 make levels-export   # write assets/levels/*.txt so you can edit the forts
 make run           # boot the DSK in RetroVirtualMachine
+make docs          # manuals (EN + EL) and the sleeve art -> docs/
 make clean
 ```
 
@@ -134,6 +135,11 @@ FuriousFowlsCPC/
 ├── assets/
 │   ├── sheets/         SOURCE OF TRUTH for all art
 │   └── levels/         SOURCE OF TRUTH for all fifty forts
+├── docs/
+│   ├── manual.md       the manual, and manual-el.md in Greek
+│   ├── manual.pdf      ...rendered, opening on the sleeve
+│   ├── cover.png       the sleeve, and cover.pdf at 101 x 135 mm
+│   └── disc-label.png  the label for the disc itself
 ├── tools/
 │   ├── artlib.py       dependency-free PNG codec + the 16-pen palette
 │   ├── sheetdefs.py    the shape of every sheet, in one place
@@ -142,6 +148,8 @@ FuriousFowlsCPC/
 │   ├── levels.py       levels: txt <-> packed records, both directions
 │   ├── gen_tables.py   font, strings, sine table
 │   ├── cpcshot.py      run the real binary headless and screenshot it
+│   ├── mkmanual.py     the manuals -> PDF
+│   ├── mkcover.py      the sleeve art, drawn from scratch
 │   ├── make_loader.sh  the AMSDOS BASIC bootloader
 │   └── dsk2ext.py      standard DSK -> extended (emulators mangle the rest)
 ├── build/              (generated)

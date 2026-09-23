@@ -8,7 +8,8 @@
 #    make sprites-export  write assets/sheets/*.png so you can edit the art
 #    make levels-export   write assets/levels/*.txt so you can edit the forts
 #    make check-state   state.inc overlaps, and theme skies vs the pens
-#    make manual        render manual.md / manual-el.md -> dist/*.pdf
+#    make manual        render docs/manual*.md -> docs/*.pdf
+#    make cover         draw the sleeve art     -> docs/cover*.png
 #    make run           launch dist/fowls.dsk in RetroVirtualMachine
 #    make clean         remove build/ and dist/
 #
@@ -63,7 +64,7 @@ EXEC_ADDR := 4000
 ART_ADDR  := C000
 
 .PHONY: all asm dsk run clean sprites-export levels-export sounds-export \
-        art levels sounds manual check-state
+        art levels sounds manual cover docs check-state
 
 all: dsk
 
@@ -163,21 +164,39 @@ $(DSK): $(BIN) $(ARTBIN) $(LOADER) $(SPLASH) $(SCORES)
 check-state:
 	$(PYTHON) tools/checkstate.py
 
-# ---- manuals ---------------------------------------------------------------
+# ---- the paperwork ---------------------------------------------------------
+#  docs/ holds both the sources and the built PDFs, and that is deliberate:
+#  dist/ is in .gitignore, so a manual rendered into it does not survive a
+#  clone. The two people who will ever read this want the PDF, not the
+#  toolchain that makes it.
+#
 #  The renderer understands exactly the Markdown these two files use and
 #  writes anything else out as it stands, so a construct it has never met
 #  shows up in the PDF rather than vanishing from it.
-MANUALS   := $(DIST)/manual.pdf $(DIST)/manual-el.pdf
+DOCS      := docs
+MANUALS   := $(DOCS)/manual.pdf $(DOCS)/manual-el.pdf
+COVERS    := $(DOCS)/cover.png $(DOCS)/cover.pdf $(DOCS)/disc-label.png
+
+docs: manual cover
 
 manual: $(MANUALS)
 
-$(DIST)/manual.pdf: manual.md tools/mkmanual.py
-	@mkdir -p $(DIST)
-	$(PYTHON) tools/mkmanual.py manual.md $@
+#  Each manual opens on the sleeve, so the PDFs wait for the art.
+$(DOCS)/manual.pdf: $(DOCS)/manual.md tools/mkmanual.py $(DOCS)/cover.png
+	$(PYTHON) tools/mkmanual.py $< $@ $(DOCS)/cover.png
 
-$(DIST)/manual-el.pdf: manual-el.md tools/mkmanual.py
-	@mkdir -p $(DIST)
-	$(PYTHON) tools/mkmanual.py manual-el.md $@
+$(DOCS)/manual-el.pdf: $(DOCS)/manual-el.md tools/mkmanual.py $(DOCS)/cover.png
+	$(PYTHON) tools/mkmanual.py $< $@ $(DOCS)/cover.png
+
+# ---- sleeve art ------------------------------------------------------------
+cover: $(COVERS)
+
+$(DOCS)/cover.png: tools/mkcover.py
+	$(PYTHON) tools/mkcover.py $(DOCS)
+
+#  One run writes all three; these two only have to wait for it.
+$(DOCS)/cover.pdf $(DOCS)/disc-label.png: $(DOCS)/cover.png
+	@:
 
 # ---- emulator --------------------------------------------------------------
 run: dsk

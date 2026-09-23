@@ -2,7 +2,8 @@
 # ============================================================================
 #  mkmanual.py — manual.md / manual-el.md -> PDF
 #
-#      python3 tools/mkmanual.py manual.md dist/manual.pdf
+#      python3 tools/mkmanual.py docs/manual.md docs/manual.pdf
+#      python3 tools/mkmanual.py docs/manual.md docs/manual.pdf docs/cover.png
 #
 #  A Markdown renderer for exactly the Markdown the two manuals use, and no
 #  more: headings, paragraphs, bullets, indented code, tables, rules, with
@@ -34,6 +35,7 @@ class Manual(FPDF):
     def __init__(self, title):
         super().__init__(format='A4')
         self.title_text = title
+        self.plain_pages = 0
         self.set_margins(MARGIN, MARGIN, MARGIN)
         self.set_auto_page_break(True, MARGIN + 6)
         for style, file in (('', 'DejaVuSans.ttf'),
@@ -43,6 +45,8 @@ class Manual(FPDF):
         self.add_font('dvm', '', os.path.join(FONTS, 'DejaVuSansMono.ttf'))
 
     def footer(self):
+        if self.page_no() <= self.plain_pages:   # no folio on the sleeve
+            return
         self.set_y(-14)
         self.set_font('dv', '', 8)
         self.set_text_color(*SUB)
@@ -207,10 +211,25 @@ def wrap(pdf, text, width):
     return out or ['']
 
 
-def render(src, dst):
+def cover_page(pdf, path):
+    """The sleeve, bled to the page width and centred. A manual that opens
+    on its own cover is the whole reason the cover exists."""
+    pdf.add_page()
+    pdf.plain_pages = 1
+    pdf.set_fill_color(14, 12, 18)
+    pdf.rect(0, 0, PAGE_W, pdf.h, 'F')
+    from PIL import Image
+    im = Image.open(path)
+    h = PAGE_W * im.height / im.width
+    pdf.image(path, 0, (pdf.h - h) / 2, PAGE_W, h)
+
+
+def render(src, dst, cover=None):
     lines = open(src, encoding='utf-8').read().split('\n')
     title = lines[0].lstrip('# ').strip()
     pdf = Manual(title)
+    if cover and os.path.exists(cover):
+        cover_page(pdf, cover)
     pdf.add_page()
 
     i = 0
@@ -291,6 +310,6 @@ def render(src, dst):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        raise SystemExit('usage: mkmanual.py IN.md OUT.pdf')
-    render(sys.argv[1], sys.argv[2])
+    if len(sys.argv) not in (3, 4):
+        raise SystemExit('usage: mkmanual.py IN.md OUT.pdf [COVER.png]')
+    render(*sys.argv[1:])
