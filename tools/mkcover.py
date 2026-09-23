@@ -726,6 +726,64 @@ def logotype(img, s, cx, top, target_w):
     return h / float(SS)
 
 
+def title_block(img, cx, top, target_w, gap=6):
+    """The two stacked lines of the logotype. Returns the y it ends at, so
+    whatever comes next stacks off the type rather than off a constant that
+    stops being true the moment the width changes."""
+    h = logotype(img, 'FOWL AND', cx, top, target_w)
+    h2 = logotype(img, 'FURIOUS', cx, top + h + gap, target_w)
+    return top + h + gap + h2
+
+
+def flash_bar(pen, w, h=26):
+    """The colour flash across the top. It runs unbroken across all three
+    panels of the inlay, which is the one thing that makes a wrap read as
+    one printed sheet rather than three pictures side by side."""
+    bw = w / float(len(FLASH))
+    for i, c in enumerate(FLASH):
+        pen.rect((i * bw, 0, (i + 1) * bw + 1, h), fill=c)
+
+
+def foot(img, pen, w, left, right, y=1532):
+    pen.rect((50, y, w - 50, y + 2), fill=(70, 64, 78))
+    text(img, (50, y + 16), left, F_NARROW, 20, (152, 146, 160), spacing=3)
+    text(img, (w - 50, y + 16), right, F_NARROW, 20, (152, 146, 160),
+         anchor='ra', spacing=3)
+
+
+def shot_box(img, pen, path, x, y, w, caption):
+    """One screenshot in a keyline box with a caption under it. These are
+    REAL frames off the headless emulator in tools/cpcshot.py, not mock-ups —
+    the 1985 habit of putting the arcade machine's graphics on the 8-bit
+    port's back cover is the one convention here that is not being kept."""
+    im = Image.open(path).convert('RGB')
+    h = int(round(w * im.height / float(im.width)))
+    pen.rect((x - 3, y - 3, x + w + 3, y + h + 3), fill=(236, 230, 220))
+    img.paste(im.resize((int(w * SS), int(h * SS)), Image.LANCZOS),
+              (int(x * SS), int(y * SS)))
+    text(img, (x + w / 2.0, y + h + 12), caption, F_NARROW, 18,
+         (170, 164, 178), anchor='ma', spacing=2)
+    return h + 34
+
+
+def barcode(img, pen, x, y, w, h, digits):
+    """Decorative. The bars are a hash of the digits under them and scan as
+    nothing; a 1985 sleeve had one and this one is furniture, not a product
+    code."""
+    pen.rect((x, y, x + w, y + h + 22), fill=(236, 230, 220))
+    n, bx = 0, x + 8
+    span = w - 16
+    for i, ch in enumerate(digits):
+        n = (n * 33 + ord(ch)) & 0xFFFF
+        for k in range(4):
+            bw = span / (len(digits) * 4.0)
+            if (n >> k) & 1:
+                pen.rect((bx, y + 6, bx + bw * 0.62, y + h - 6), fill=INK)
+            bx += bw
+    text(img, (x + w / 2.0, y + h - 2), digits, F_NARROW, 17, INK,
+         anchor='ma', spacing=3)
+
+
 def starburst(pen, cx, cy, r, points, fill, outline=INK, wobble=0.56):
     pts = []
     for i in range(points * 2):
@@ -736,20 +794,21 @@ def starburst(pen, cx, cy, r, points, fill, outline=INK, wobble=0.56):
 
 
 # ---------------------------------------------------------------------------
-def build_cover():
+#  PANELS. Each one renders into its OWN image at its own natural size and is
+#  pasted into the wrap afterwards. The alternative — threading an origin
+#  through every drawing call — would mean touching text(), logotype(),
+#  sky(), paint_art()'s wash and vignette, and every absolute coordinate in
+#  here. A paste is one line and cannot be got subtly wrong.
+def build_front():
     img = Image.new('RGB', (W * SS, H * SS), INK)
     p = Pen(img)
 
-    #  the flash across the top, because the printer had the ink
-    bw = W / float(len(FLASH))
-    for i, c in enumerate(FLASH):
-        p.rect((i * bw, 0, (i + 1) * bw + 1, 26), fill=c)
+    flash_bar(p, W)
 
     text(img, (W / 2, 42), 'REVIVE8BIT PRESENTS', F_NARROW, 21,
          (198, 192, 206), anchor='ma', spacing=6)
 
-    h1 = logotype(img, 'FOWL AND', W / 2, 74, 942)
-    logotype(img, 'FURIOUS', W / 2, 74 + h1 + 6, 942)
+    title_block(img, W / 2, 74, 942)
 
     text(img, (W / 2, 398), 'THEY TOOK THE TREE.   TAKE IT BACK.', F_NARROW,
          26, (244, 192, 98), anchor='ma', spacing=4)
@@ -795,13 +854,9 @@ def build_cover():
     text(img, (1058, 1470), 'CODE', F_NARROW, 19, INK, anchor='ma',
          spacing=2)
 
-    p.rect((50, 1532, W - 50, 1534), fill=(70, 64, 78))
-    text(img, (50, 1548), 'LOAD WITH   RUN"FOWLS', F_NARROW, 20,
-         (152, 146, 160), spacing=3)
-    text(img, (W - 50, 1548), 'MADE IN GREECE', F_NARROW, 20,
-         (152, 146, 160), anchor='ra', spacing=3)
+    foot(img, p, W, 'LOAD WITH   RUN"FOWLS', 'MADE IN GREECE')
 
-    return img.resize((W, H), Image.LANCZOS)
+    return img
 
 
 # ---------------------------------------------------------------------------
@@ -814,13 +869,10 @@ LW, LH = 827, 591
 def build_label():
     img = Image.new('RGB', (LW * SS, LH * SS), (236, 230, 220))
     p = Pen(img)
-    bw = LW / float(len(FLASH))
-    for i, c in enumerate(FLASH):
-        p.rect((i * bw, 0, (i + 1) * bw + 1, 20), fill=c)
+    flash_bar(p, LW, 20)
     p.rect((0, LH - 64, LW, LH), fill=INK)
 
-    logotype(img, 'FOWL AND', LW / 2, 54, 560)
-    logotype(img, 'FURIOUS', LW / 2, 152, 560)
+    title_block(img, LW / 2, 54, 560, gap=17)
 
     bl = Image.new('RGBA', (210 * SS, 190 * SS), (0, 0, 0, 0))
     bird(Pen(bl), 116, 96, 54)
@@ -859,7 +911,7 @@ def to_pdf(png, dst):
 def main(out='docs'):
     os.makedirs(out, exist_ok=True)
     cover = os.path.join(out, 'cover.png')
-    build_cover().save(cover, dpi=(DPI, DPI))
+    build_front().resize((W, H), Image.LANCZOS).save(cover, dpi=(DPI, DPI))
     build_label().save(os.path.join(out, 'disc-label.png'), dpi=(DPI, DPI))
     to_pdf(cover, os.path.join(out, 'cover.pdf'))
     print('%s  %dx%d @ %ddpi (%.0f x %.0f mm)'
