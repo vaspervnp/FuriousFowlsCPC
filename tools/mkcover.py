@@ -4,9 +4,14 @@
 #
 #      python3 tools/mkcover.py docs
 #
-#  Writes docs/cover.png (1200x1600, 300dpi = 101x135mm, which is a 3"
-#  disc case inlay), docs/cover.pdf at that physical size, and
-#  docs/disc-label.png for the disc itself.
+#  Writes the full wrap-around inlay — BACK | SPINE | FRONT on one flat
+#  2550 x 1600 sheet, 215.9 x 135.5 mm at 300 dpi — plus the front and back
+#  as standalone panels, the disc label, and PDFs at the physical size.
+#
+#  The spine is 12.7 mm, which is the case and not the disc: the media is
+#  5 mm, the cassette-style library case it shipped in is 10 to 13, and
+#  deriving the spine from the disc is the classic way to end up 6 mm
+#  short and pull the front cover's title off centre.
 #
 #  WHY A PROGRAM AND NOT A PAINTING: same reason the spritesheets are
 #  generated — so the thing can be changed. Move the fort, repaint the sky,
@@ -34,8 +39,10 @@ import random
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageFilter
 
 SS = 3                                  # supersample: Pillow has no AA
-W, H = 1200, 1600
+W, H = 1200, 1600                       # ONE PANEL, never the whole sheet
 DPI = 300
+SPINE = 150                             # 12.7 mm — see build_spine
+SHEET_W = W + SPINE + W
 
 FONT_DIR = '/usr/share/fonts/truetype'
 F_TITLE = FONT_DIR + '/roboto/unhinted/RobotoTTF/Roboto-Black.ttf'
@@ -726,6 +733,38 @@ def logotype(img, s, cx, top, target_w):
     return h / float(SS)
 
 
+def fits(s, path, size, w, spacing=0, where=''):
+    """Raise rather than overflow. Pillow will happily draw a line straight
+    off the edge of the panel and the only sign is in the proof, which is
+    exactly the kind of thing you stop noticing on the fortieth render."""
+    got = text_w(s, path, size, spacing)
+    if got > w:
+        raise SystemExit('mkcover: %s overflows by %.0f px: %r'
+                         % (where or 'text', got - w, s))
+    return s
+
+
+def paragraph(img, x, y, w, body, path, size, fill, leading, spacing=0):
+    """Word-wrapped, ragged right. Blank lines separate paragraphs. Never
+    justified: 1985 back-cover blurb was set ragged in a single column, and
+    justifying a narrow measure opens rivers you cannot close."""
+    for block in body.split('\n\n'):
+        line = ''
+        for word in block.split():
+            trial = (line + ' ' + word).strip()
+            if line and text_w(trial, path, size, spacing) > w:
+                text(img, (x, y), line, path, size, fill, spacing=spacing)
+                y += leading
+                line = word
+            else:
+                line = trial
+        if line:
+            text(img, (x, y), line, path, size, fill, spacing=spacing)
+            y += leading
+        y += leading * 0.55
+    return y - leading * 0.55
+
+
 def title_block(img, cx, top, target_w, gap=6):
     """The two stacked lines of the logotype. Returns the y it ends at, so
     whatever comes next stacks off the type rather than off a constant that
@@ -751,37 +790,29 @@ def foot(img, pen, w, left, right, y=1532):
          anchor='ra', spacing=3)
 
 
-def shot_box(img, pen, path, x, y, w, caption):
+#  cpcshot.py writes every Mode 0 pixel 4 output pixels wide and every
+#  scanline twice, so its PNG is already at the 2:1 pixel aspect a real
+#  machine shows — do not "correct" it to square pixels or every sprite
+#  comes out tall and thin. Half of 688 x 448 is exact, which undoes that
+#  doubling and nothing else: the result is pixel-for-pixel what the CRTC
+#  put out. NEAREST, obviously — a smoothly resampled screenshot is the
+#  loudest possible modern tell on an otherwise period sleeve.
+SHOT_W, SHOT_H = 344, 224               # 688 x 448, halved exactly
+
+
+def shot_box(img, pen, path, x, y, caption):
     """One screenshot in a keyline box with a caption under it. These are
-    REAL frames off the headless emulator in tools/cpcshot.py, not mock-ups —
-    the 1985 habit of putting the arcade machine's graphics on the 8-bit
-    port's back cover is the one convention here that is not being kept."""
+    REAL frames off the headless emulator in tools/cpcshot.py, not mock-ups
+    or a better machine's graphics — which in 1985 was very much not the
+    convention."""
     im = Image.open(path).convert('RGB')
-    h = int(round(w * im.height / float(im.width)))
-    pen.rect((x - 3, y - 3, x + w + 3, y + h + 3), fill=(236, 230, 220))
-    img.paste(im.resize((int(w * SS), int(h * SS)), Image.LANCZOS),
+    pen.rect((x - 3, y - 3, x + SHOT_W + 3, y + SHOT_H + 3),
+             fill=(236, 230, 220))
+    img.paste(im.resize((SHOT_W * SS, SHOT_H * SS), Image.NEAREST),
               (int(x * SS), int(y * SS)))
-    text(img, (x + w / 2.0, y + h + 12), caption, F_NARROW, 18,
-         (170, 164, 178), anchor='ma', spacing=2)
-    return h + 34
-
-
-def barcode(img, pen, x, y, w, h, digits):
-    """Decorative. The bars are a hash of the digits under them and scan as
-    nothing; a 1985 sleeve had one and this one is furniture, not a product
-    code."""
-    pen.rect((x, y, x + w, y + h + 22), fill=(236, 230, 220))
-    n, bx = 0, x + 8
-    span = w - 16
-    for i, ch in enumerate(digits):
-        n = (n * 33 + ord(ch)) & 0xFFFF
-        for k in range(4):
-            bw = span / (len(digits) * 4.0)
-            if (n >> k) & 1:
-                pen.rect((bx, y + 6, bx + bw * 0.62, y + h - 6), fill=INK)
-            bx += bw
-    text(img, (x + w / 2.0, y + h - 2), digits, F_NARROW, 17, INK,
-         anchor='ma', spacing=3)
+    text(img, (x + SHOT_W / 2.0, y + SHOT_H + 12), caption, F_NARROW, 15,
+         (170, 164, 178), anchor='ma', spacing=1)
+    return SHOT_H + 36
 
 
 def starburst(pen, cx, cy, r, points, fill, outline=INK, wobble=0.56):
@@ -860,6 +891,204 @@ def build_front():
 
 
 # ---------------------------------------------------------------------------
+#  THE BACK. Everything on it was checked against the source before it was
+#  set: a workflow wrote the copy with file:line evidence for each claim and
+#  a second agent tried to refute every one of them. What it threw out is in
+#  the commit message. 1985 back covers were works of fiction; this one is
+#  not, which is the joke.
+# ---------------------------------------------------------------------------
+#  Real frames, off the headless emulator in tools/cpcshot.py, captured with
+#  the key sequences recorded in the commit. Three, not four: four screens
+#  was the 1987 habit and two the 1985 one, and three in a row is what fits.
+SHOTS = [
+    ('docs/shot-sling.png', 'FORT ONE.  THE SLING AT FULL DRAW.'),
+    ('docs/shot-flight.png', 'FORT 46.  EIGHT PIGS, AND A BIRD IN THE AIR.'),
+    ('docs/shot-desert.png', 'FORT 37.  ONE OF THE SIX SKIES.'),
+]
+
+BLURB = """The birds had a tree. The pigs had a field, a saw, and one whole
+night while the choir slept. By morning there were fifty forts on the ridge,
+with a pig inside each one looking pleased.
+
+You have the last fork of the trunk, a length of elastic, and a queue of
+birds. You are not demolishing anything. You are taking the timber back, one
+plank at a time, and it has to land on somebody.
+
+Nothing is scored for the wreckage. The score is what the wreckage lands on
+— or the bird, if it gets there first — plus a hundred for every bird you
+did not need."""
+
+BULLETS = [
+    'FIFTY FORTS, AND THE LAST ARE THE BIGGEST',
+    'SIXTEEN PIECES, PLANK TO DYNAMITE',
+    'SIX BIRDS, THREE PIGS, FIFTY-FOUR FRAMES DRAWN',
+    'SCORED ON HOW HARD THE PIGS WERE HIT',
+    'NOTHING IS DELETED — IT IS KNOCKED OVER',
+    'A 320-PIXEL WORLD, PANNED BY THE CRTC ITSELF',
+    'SWAP SIDES AND THROW PIGS AT BIRDS INSTEAD',
+    'HIGH SCORE WRITTEN BACK TO THE DISC',
+    'TWO HUNDRED AND FORTY-THREE PIGS IN ALL',
+    'EASY, MEDIUM OR HARD: FIVE, THREE, TWO GOES',
+]
+
+SPECS = [
+    ('MACHINE', 'AMSTRAD CPC 464 / 6128'),
+    ('MEMORY', '64K. NO EXPANSION NEEDED'),
+    ('MEDIA', '3in DISC, ONE SIDE'),
+    ('DISPLAY', 'MODE 0 — 160x200 — 16 COLOURS'),
+    ('SOUND', 'AY-3-8912, THREE VOICES'),
+    ('CONTROL', 'KEYBOARD: CURSORS, SPACE, ESC'),
+    ('PLAYERS', 'ONE'),
+]
+
+
+def build_back():
+    img = Image.new('RGB', (W * SS, H * SS), INK)
+    p = Pen(img)
+    flash_bar(p, W)
+
+    logotype(img, 'FOWL AND FURIOUS', W / 2, 52, 1000)
+    text(img, (W / 2, 148), 'THEY TOOK THE TREE.   TAKE IT BACK.', F_NARROW,
+         24, (244, 192, 98), anchor='ma', spacing=4)
+
+    #  Two screenshots, not four. Four was the 1987 habit; in 1985 two large
+    #  ones was the norm, and two leaves the copy room to breathe.
+    gap = 30
+    x0 = (W - (len(SHOTS) * SHOT_W + (len(SHOTS) - 1) * gap)) / 2.0
+    for i, (path, cap) in enumerate(SHOTS):
+        fits(cap, F_NARROW, 15, SHOT_W, 1, 'caption %d' % i)
+        shot_box(img, p, path, x0 + i * (SHOT_W + gap), 196, cap)
+
+    y = paragraph(img, 66, 520, 1068, BLURB, F_TEXT, 24, (222, 218, 228), 36)
+
+    y += 34
+    for i, b in enumerate(BULLETS):
+        bx = 66 + (i % 2) * 552
+        by = y + (i // 2) * 38
+        fits(b, F_NARROW, 21, 512, 1, 'bullet %d' % i)
+        p.rect((bx, by + 7, bx + 11, by + 18), fill=(214, 26, 32))
+        text(img, (bx + 24, by), b, F_NARROW, 21, (236, 232, 240), spacing=1)
+
+    #  A light slab for the technical block, the publisher and the legal
+    #  line. Small reversed-out type fills in when four-colour work goes half
+    #  a millimetre out of register, so the small print here is dark on light.
+    y = 1058
+    p.rect((50, y, W - 50, 1482), fill=(236, 230, 220))
+
+    text(img, (74, y + 22), 'SPECIFICATION', F_TITLE, 20, (176, 32, 24),
+         spacing=2)
+    for i, (k, v) in enumerate(SPECS):
+        yy = y + 60 + i * 30
+        text(img, (74, yy), k, F_NARROW, 19, (120, 114, 128), spacing=2)
+        text(img, (250, yy), fits(v, F_BOLD, 19, 352, 0, 'spec ' + k),
+             F_BOLD, 19, (36, 32, 42))
+
+    text(img, (628, y + 22), 'LOADING', F_TITLE, 20, (176, 32, 24),
+         spacing=2)
+    text(img, (628, y + 58), 'Insert the disc, label side up.', F_TEXT, 20,
+         (36, 32, 42))
+    text(img, (628, y + 88), 'Type', F_TEXT, 20, (36, 32, 42))
+    text(img, (688, y + 86), 'RUN"FOWLS', F_BOLD, 21, (176, 32, 24))
+    text(img, (826, y + 88), 'and press ENTER.', F_TEXT, 20, (36, 32, 42))
+    paragraph(img, 628, y + 128, 476,
+              'The game writes your high score back to the disc, so leave '
+              'the write-protect tab shut.', F_TEXT, 20, (36, 32, 42), 28)
+
+    p.rect((74, y + 292, W - 74, y + 294), fill=(206, 200, 192))
+    text(img, (74, y + 316), 'REVIVE8BIT', F_TITLE, 32, (36, 32, 42),
+         spacing=1)
+    text(img, (74, y + 358), 'VASPER  ·  2026  ·  R8B-DISC-001', F_NARROW,
+         18, (110, 104, 118), spacing=3)
+    paragraph(img, 628, y + 314, 476,
+              'All rights reserved. Unauthorised copying, hiring, lending or '
+              'public performance of this program is prohibited.',
+              F_TEXT, 15, (110, 104, 118), 21)
+
+    foot(img, p, W, 'WRITTEN IN Z80 ASSEMBLY', 'NOT ONE BYTE TO SPARE')
+    return img
+
+
+def build_spine():
+    """Drawn LANDSCAPE and rotated clockwise, because there is no rotated-text
+    path anywhere in here and adding one to draw four words would be silly.
+
+    Clockwise, not anticlockwise: the British convention — shared with books
+    and video sleeves — is that a spine reads TOP TO BOTTOM when the case
+    stands upright. Rotating clockwise maps the landscape strip's left end
+    to the spine's top, so ordinary left-to-right text comes out reading
+    downwards, and the publisher wordmark at the right end lands at the
+    bottom, at eye level in a rack. The check that needs no convention: lay
+    the folded case flat with the FRONT UP and the spine on the left, and the
+    spine should be readable without moving your head.
+
+    The ground is the same INK as both panels, on purpose. A spine in a
+    different colour puts a hard edge exactly on a crease, and a crease is
+    placed to about a millimetre by hand — one slip and there is a coloured
+    sliver on the front cover that reads as a printing fault."""
+    strip = Image.new('RGB', (H * SS, SPINE * SS), INK)
+    p = Pen(strip)
+
+    #  rules just inside each fold, so the spine has edges without having a
+    #  colour change ON the fold
+    for y in (18, SPINE - 20):
+        p.rect((40, y, H - 40, y + 2), fill=(58, 52, 66))
+
+    mark, fmt = 'REVIVE8BIT', 'AMSTRAD CPC  ·  3in DISC'
+    mw = text_w(mark, F_TITLE, 30, 1)
+    fw_ = text_w(fmt, F_NARROW, 23, 4)
+    right = H - 56
+    text(strip, (right, SPINE / 2.0), mark, F_TITLE, 30, (236, 230, 220),
+         anchor='rm', spacing=1)
+    text(strip, (right - mw - 46, SPINE / 2.0), fmt, F_NARROW, 23,
+         (186, 180, 194), anchor='rm', spacing=4)
+
+    #  the title takes whatever is left, capped so its cap height stays well
+    #  inside the spine — type set to fill 12.7 mm gets eaten by the fold on
+    #  half a print run
+    avail = (right - mw - fw_ - 92) - 150
+    #  and capped by HEIGHT too: cap height must stay a good 2 mm inside the
+    #  spine or the fold eats it on half the run
+    tw = min(avail, 940)
+    h = caps_mask('FOWL AND FURIOUS', tw).height / float(SS)
+    if h > SPINE * 0.52:
+        tw = int(tw * SPINE * 0.52 / h)
+        h = caps_mask('FOWL AND FURIOUS', tw).height / float(SS)
+    logotype(strip, 'FOWL AND FURIOUS', 150 + tw / 2.0,
+             (SPINE - h) / 2.0 - 4, tw)
+
+    return strip.rotate(-90, expand=True)
+
+
+# ---------------------------------------------------------------------------
+#  THE WRAP. Printed flat and folded round the case, so the panels run
+#  BACK | SPINE | FRONT left to right: fold it and the back ends up behind
+#  the front with the spine between them. Get that order backwards and the
+#  sleeve is inside out, which is the one mistake here that looks fine on
+#  screen and is only discovered with scissors.
+def build_wrap():
+    sheet = Image.new('RGB', (SHEET_W * SS, H * SS), INK)
+    sheet.paste(build_back(), (0, 0))
+    sheet.paste(build_spine(), (W * SS, 0))
+    sheet.paste(build_front(), ((W + SPINE) * SS, 0))
+
+    #  The flash is redrawn ACROSS THE WHOLE SHEET, over the three panels'
+    #  own copies of it. Each panel has to carry one so that it stands up
+    #  alone as a PNG, but on the wrap the six bars have to be six bars
+    #  across 216 mm, not three sets of six with a seam at each fold — a
+    #  band that breaks at the crease is what makes a wrap read as three
+    #  pictures laid side by side.
+    p = Pen(sheet)
+    flash_bar(p, SHEET_W)
+
+    #  fold marks, in the trim margin at top and bottom, the way a printer
+    #  would want them
+    for x in (W, W + SPINE):
+        p.line([(x, 0), (x, 12)], fill=(120, 116, 128), width=1)
+        p.line([(x, H - 12), (x, H)], fill=(120, 116, 128), width=1)
+    return sheet.resize((SHEET_W, H), Image.LANCZOS)
+
+
+# ---------------------------------------------------------------------------
 #  The disc label. A 3" Amstrad disc has about 70 x 50 mm of paper on it,
 #  which at 300dpi is this.
 # ---------------------------------------------------------------------------
@@ -908,16 +1137,29 @@ def to_pdf(png, dst):
     pdf.output(dst)
 
 
+def mm(px):
+    return px / DPI * 25.4
+
+
 def main(out='docs'):
     os.makedirs(out, exist_ok=True)
-    cover = os.path.join(out, 'cover.png')
-    build_front().resize((W, H), Image.LANCZOS).save(cover, dpi=(DPI, DPI))
-    build_label().save(os.path.join(out, 'disc-label.png'), dpi=(DPI, DPI))
-    to_pdf(cover, os.path.join(out, 'cover.pdf'))
-    print('%s  %dx%d @ %ddpi (%.0f x %.0f mm)'
-          % (cover, W, H, DPI, W / DPI * 25.4, H / DPI * 25.4))
-    print('%s/disc-label.png  %dx%d' % (out, LW, LH))
-    print('%s/cover.pdf' % out)
+
+    def save(img, name):
+        path = os.path.join(out, name)
+        img.save(path, dpi=(DPI, DPI))
+        print('%-24s %5dx%-5d  %5.1f x %5.1f mm'
+              % (path, img.width, img.height, mm(img.width), mm(img.height)))
+        return path
+
+    cover = save(build_front().resize((W, H), Image.LANCZOS), 'cover.png')
+    back = save(build_back().resize((W, H), Image.LANCZOS), 'back.png')
+    wrap = save(build_wrap(), 'inlay.png')
+    save(build_label(), 'disc-label.png')
+    for src in (cover, wrap):
+        to_pdf(src, src[:-4] + '.pdf')
+        print('%-24s' % (src[:-4] + '.pdf'))
+    print('fold at %.1f mm and %.1f mm from the left edge'
+          % (mm(W), mm(W + SPINE)))
 
 
 if __name__ == '__main__':

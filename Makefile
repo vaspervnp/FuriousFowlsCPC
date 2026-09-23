@@ -9,7 +9,7 @@
 #    make levels-export   write assets/levels/*.txt so you can edit the forts
 #    make check-state   state.inc overlaps, and theme skies vs the pens
 #    make manual        render docs/manual*.md -> docs/*.pdf
-#    make cover         draw the sleeve art     -> docs/cover*.png
+#    make cover         the wrap-around inlay   -> docs/inlay.png + panels
 #    make run           launch dist/fowls.dsk in RetroVirtualMachine
 #    make clean         remove build/ and dist/
 #
@@ -175,7 +175,10 @@ check-state:
 #  shows up in the PDF rather than vanishing from it.
 DOCS      := docs
 MANUALS   := $(DOCS)/manual.pdf $(DOCS)/manual-el.pdf
-COVERS    := $(DOCS)/cover.png $(DOCS)/cover.pdf $(DOCS)/disc-label.png
+SHOTS     := $(DOCS)/shot-sling.png $(DOCS)/shot-flight.png \
+             $(DOCS)/shot-desert.png
+COVERS    := $(DOCS)/cover.png $(DOCS)/cover.pdf $(DOCS)/back.png \
+             $(DOCS)/inlay.png $(DOCS)/inlay.pdf $(DOCS)/disc-label.png
 
 docs: manual cover
 
@@ -191,11 +194,15 @@ $(DOCS)/manual-el.pdf: $(DOCS)/manual-el.md tools/mkmanual.py $(DOCS)/cover.png
 # ---- sleeve art ------------------------------------------------------------
 cover: $(COVERS)
 
-$(DOCS)/cover.png: tools/mkcover.py
+#  The back panel carries real screenshots, so it depends on them. They are
+#  checked in rather than regenerated: capturing them needs a built DSK and
+#  a key sequence, and the commit records the sequence.
+$(DOCS)/cover.png: tools/mkcover.py $(SHOTS)
 	$(PYTHON) tools/mkcover.py $(DOCS)
 
-#  One run writes all three; these two only have to wait for it.
-$(DOCS)/cover.pdf $(DOCS)/disc-label.png: $(DOCS)/cover.png
+#  One run writes them all; the rest only have to wait for it.
+$(DOCS)/cover.pdf $(DOCS)/back.png $(DOCS)/inlay.png $(DOCS)/inlay.pdf \
+$(DOCS)/disc-label.png: $(DOCS)/cover.png
 	@:
 
 # ---- emulator --------------------------------------------------------------

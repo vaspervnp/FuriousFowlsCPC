@@ -59,7 +59,7 @@ on screen in the wrong colour.
 | Sheet | Cells | Contents |
 |-------|-------|----------|
 | `creatures.png` | 54 of 16x32 | 6 birds + 3 pigs, one per row, **six states each** |
-| `blocks.png` | 60 of 16x16 | 10 piece shapes x **6 material sets**, one set per row |
+| `blocks.png` | 16 of 10x10 | the sixteen piece shapes, **one material** — timber |
 | `scenery.png` | 14 of 32x64 | trees, bushes, clouds, a boulder, the slingshot |
 
 The six creature states, in sheet order, are `idle`, `blink`, `ready`,
@@ -97,7 +97,7 @@ map
 .............i..i...
 ```
 
-The map is the fort on the game's 20x10 grid of 16x16 cells; the **last**
+The map is the fort on the game's 32x16 grid of 10x10 cells; the **last**
 line rests on the ground, so a short map is fine.
 
 ```
@@ -122,7 +122,7 @@ FuriousFowlsCPC/
 │   ├── video.asm       CRTC ring scroll, row-address LUT, palette
 │   ├── scene.asm       sky / turf / scenery column renderer, redraw_rect
 │   ├── sprite.asm      masked Mode 0 blitter and its lookup tables
-│   ├── blocks.asm      the 20x10 grid, damage, and the collapse sweep
+│   ├── blocks.asm      the 32x16 grid, damage, and the collapse sweep
 │   ├── entity.asm      pigs: poses, falling, being crushed
 │   ├── shot.asm        slingshot, ballistics, collision
 │   ├── level.asm       unpacking one of the fifty records
@@ -138,7 +138,9 @@ FuriousFowlsCPC/
 ├── docs/
 │   ├── manual.md       the manual, and manual-el.md in Greek
 │   ├── manual.pdf      ...rendered, opening on the sleeve
-│   ├── cover.png       the sleeve, and cover.pdf at 101 x 135 mm
+│   ├── inlay.png       the wrap: BACK | SPINE | FRONT, 216 x 135 mm
+│   ├── cover.png       the front panel alone, and back.png
+│   ├── shot-*.png      real frames off tools/cpcshot.py, for the back
 │   └── disc-label.png  the label for the disc itself
 ├── tools/
 │   ├── artlib.py       dependency-free PNG codec + the 16-pen palette

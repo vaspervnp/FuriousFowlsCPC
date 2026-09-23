@@ -116,7 +116,8 @@ about it: **N** does not score anything and **R** does not cost you a go.
 ### Aiming
 
 The dotted line out of the pouch is the direction the bird will leave in —
-five dots, about twenty pixels of it. It is a direction, not a prediction:
+five dots, the furthest of them fifty pixels out. It is a direction, not
+a prediction:
 gravity takes over the moment the bird is in the air.
 
 The **pull** is the power. Hold SPACE and the bird is hauled further back
